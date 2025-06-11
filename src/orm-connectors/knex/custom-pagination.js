@@ -3,8 +3,8 @@ const apolloCursorPaginationBuilder = require('../../builder');
 const SEPARATION_TOKEN = '_*_';
 const ARRAY_DATA_SEPARATION_TOKEN = '_%_';
 
-const encode = (str) => Buffer.from(str).toString('base64');
-const decode = (str) => Buffer.from(str, 'base64').toString();
+export const encode = (str) => Buffer.from(str).toString('base64');
+export const decode = (str) => Buffer.from(str, 'base64').toString();
 
 const operateOverScalarOrArray = (
   initialValue,
@@ -28,10 +28,10 @@ const operateOverScalarOrArray = (
   return result;
 };
 
-const cursorGenerator = (id, customColumnValue) =>
+export const cursorGenerator = (id, customColumnValue) =>
   encode(`${id}${SEPARATION_TOKEN}${customColumnValue}`);
 
-const getDataFromCursor = (cursor) => {
+export const getDataFromCursor = (cursor) => {
   const decodedCursor = decode(cursor);
   const data = decodedCursor.split(SEPARATION_TOKEN);
   if (data[0] === undefined || data[1] === undefined) {
@@ -43,7 +43,11 @@ const getDataFromCursor = (cursor) => {
   return [data[0], values];
 };
 
-const formatColumnIfAvailable = (column, formatColumnFn, isRaw = true) => {
+export const formatColumnIfAvailable = (
+  column,
+  formatColumnFn,
+  isRaw = true
+) => {
   if (formatColumnFn) {
     return formatColumnFn(column, isRaw);
   }
@@ -152,7 +156,7 @@ const buildRemoveNodesFromBeforeOrAfter = (beforeOrAfter) => {
   };
 };
 
-const orderNodesBy = (
+export const orderNodesBy = (
   nodesAccessor,
   { orderColumn = 'id', ascOrDesc = 'asc', formatColumnFn, primaryKey = 'id' }
 ) => {
@@ -190,27 +194,28 @@ const orderNodesBy = (
 // It must slice the result set from the element after the one with the given cursor until the end.
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesBeforeAndIncluding(resultSet, 'B') should return [C, D]
-const removeNodesBeforeAndIncluding =
+export const removeNodesBeforeAndIncluding =
   buildRemoveNodesFromBeforeOrAfter('before');
 
 // Used when `first` is included in the query
 // It must remove nodes from the result set starting from the end until it's of size `length`.
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesFromEnd(resultSet, 3) should return [A, B, C]
-const removeNodesFromEnd = (nodesAccessor, first) =>
+export const removeNodesFromEnd = (nodesAccessor, first) =>
   nodesAccessor.clone().limit(first);
 
 // Used when `before` is included in the query
 // It must remove all nodes after and including the one with cursor `cursorOfInitialNode`
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesAfterAndIncluding(resultSet, 'C') should return [A, B]
-const removeNodesAfterAndIncluding = buildRemoveNodesFromBeforeOrAfter('after');
+export const removeNodesAfterAndIncluding =
+  buildRemoveNodesFromBeforeOrAfter('after');
 
 // Used when `last` is included in the query
 // It must remove nodes from the result set starting from the beginning until it's of size `length`.
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesFromBeginning(resultSet, 3) should return [B, C, D]
-const removeNodesFromBeginning = (
+export const removeNodesFromBeginning = (
   nodesAccessor,
   last,
   { orderColumn, ascOrDesc, primaryKey }
@@ -240,7 +245,7 @@ const removeNodesFromBeginning = (
   return result;
 };
 
-const getNodesLength = async (nodesAccessor) => {
+export const getNodesLength = async (nodesAccessor) => {
   const counts = await nodesAccessor.clone().clearSelect().count('*');
   const result = counts.reduce((prev, curr) => {
     const currCount = curr.count || curr['count(*)'];
@@ -250,7 +255,7 @@ const getNodesLength = async (nodesAccessor) => {
   return result;
 };
 
-const hasLengthGreaterThan = async (nodesAccessor, amount) => {
+export const hasLengthGreaterThan = async (nodesAccessor, amount) => {
   const result = await nodesAccessor.clone().limit(amount + 1);
   return result.length === amount + 1;
 };
@@ -260,7 +265,7 @@ const hasLengthGreaterThan = async (nodesAccessor, amount) => {
 //   cursor
 //   node
 // }
-const convertNodesToEdges = (nodes, _, { orderColumn, primaryKey }) =>
+export const convertNodesToEdges = (nodes, _, { orderColumn, primaryKey }) =>
   nodes.map((node) => {
     const dataValue = operateOverScalarOrArray(
       '',
@@ -289,13 +294,4 @@ const paginate = apolloCursorPaginationBuilder({
   orderNodesBy,
 });
 
-module.exports = paginate;
-module.exports.getDataFromCursor = getDataFromCursor;
-module.exports.removeNodesBeforeAndIncluding = removeNodesBeforeAndIncluding;
-module.exports.removeNodesFromEnd = removeNodesFromEnd;
-module.exports.removeNodesAfterAndIncluding = removeNodesAfterAndIncluding;
-module.exports.removeNodesFromBeginning = removeNodesFromBeginning;
-module.exports.getNodesLength = getNodesLength;
-module.exports.hasLengthGreaterThan = hasLengthGreaterThan;
-module.exports.convertNodesToEdges = convertNodesToEdges;
-module.exports.orderNodesBy = orderNodesBy;
+export default paginate;
