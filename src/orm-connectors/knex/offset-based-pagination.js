@@ -12,15 +12,17 @@ const apolloCursorPaginationBuilder = require('../../builder');
 
 const SEPARATION_TOKEN = '___';
 
-const encode = str => Buffer.from(str).toString('base64');
-const decode = str => Buffer.from(str, 'base64').toString();
+const encode = (str) => Buffer.from(str).toString('base64');
+const decode = (str) => Buffer.from(str, 'base64').toString();
 
-const cursorGenerator = (id, offset) => encode(`${id}${SEPARATION_TOKEN}${offset}`);
+const cursorGenerator = (id, offset) =>
+  encode(`${id}${SEPARATION_TOKEN}${offset}`);
 
 const getOffsetFromCursor = (cursor) => {
   const decodedCursor = decode(cursor);
   const offset = decodedCursor.split(SEPARATION_TOKEN)[1];
-  if (offset === undefined) throw new Error(`Could not find edge with cursor ${cursor}`);
+  if (offset === undefined)
+    throw new Error(`Could not find edge with cursor ${cursor}`);
   return parseInt(offset, 10);
 };
 
@@ -43,7 +45,8 @@ const removeNodesBeforeAndIncluding = (nodesAccessor, cursorOfFinalNode) => {
 //
 // In this case, it's implemented with the limit function of SQL
 // in order to not execute a query and do iterations across the data
-const removeNodesFromEnd = (nodesAccessor, length) => nodesAccessor.limit(length);
+const removeNodesFromEnd = (nodesAccessor, length) =>
+  nodesAccessor.limit(length);
 
 const notImplemented = () => {
   throw new Error('`last` and `before` are not supported.');
@@ -54,8 +57,14 @@ const getNodesLength = async (nodesAccessor) => {
   return result.length;
 };
 
-const orderNodesBy = (nodesAccessor, { orderColumn = 'id', ascOrDesc = 'asc' }) => {
-  const result = nodesAccessor.clone().orderBy(orderColumn, ascOrDesc).orderBy('id', ascOrDesc);
+const orderNodesBy = (
+  nodesAccessor,
+  { orderColumn = 'id', ascOrDesc = 'asc' }
+) => {
+  const result = nodesAccessor
+    .clone()
+    .orderBy(orderColumn, ascOrDesc)
+    .orderBy('id', ascOrDesc);
   return result;
 };
 
@@ -69,9 +78,7 @@ const hasLengthGreaterThan = async (nodesAccessor, amount) => {
 //   cursor
 //   node
 // }
-const convertNodesToEdges = (nodes, {
-  after,
-}) => {
+const convertNodesToEdges = (nodes, { after }) => {
   const offset = after ? getOffsetFromCursor(after) : 0;
   return nodes.map((node, idx) => ({
     cursor: cursorGenerator(node.id, idx + 1 + offset),
@@ -79,17 +86,15 @@ const convertNodesToEdges = (nodes, {
   }));
 };
 
-const paginate = apolloCursorPaginationBuilder(
-  {
-    removeNodesBeforeAndIncluding,
-    removeNodesAfterAndIncluding: notImplemented,
-    getNodesLength,
-    hasLengthGreaterThan,
-    removeNodesFromEnd,
-    removeNodesFromBeginning: notImplemented,
-    convertNodesToEdges,
-    orderNodesBy,
-  },
-);
+const paginate = apolloCursorPaginationBuilder({
+  removeNodesBeforeAndIncluding,
+  removeNodesAfterAndIncluding: notImplemented,
+  getNodesLength,
+  hasLengthGreaterThan,
+  removeNodesFromEnd,
+  removeNodesFromBeginning: notImplemented,
+  convertNodesToEdges,
+  orderNodesBy,
+});
 
 module.exports = paginate;
