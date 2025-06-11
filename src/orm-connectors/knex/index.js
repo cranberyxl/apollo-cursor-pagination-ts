@@ -1,3 +1,3 @@
-const paginate = require('./custom-pagination');
+import paginate from './custom-pagination';
 
-module.exports = paginate;
+export default paginate;

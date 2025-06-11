@@ -1,4 +1,4 @@
-const apolloCursorPaginationBuilder = require('../../builder');
+import apolloCursorPaginationBuilder from '../../builder';
 
 /**
  * This implementation uses offset and is less restrictive than the stable one,
@@ -97,4 +97,4 @@ const paginate = apolloCursorPaginationBuilder({
   orderNodesBy,
 });
 
-module.exports = paginate;
+export default paginate;

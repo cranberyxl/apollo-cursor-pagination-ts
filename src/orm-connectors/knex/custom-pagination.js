@@ -1,4 +1,4 @@
-const apolloCursorPaginationBuilder = require('../../builder');
+import apolloCursorPaginationBuilder from '../../builder';
 
 const SEPARATION_TOKEN = '_*_';
 const ARRAY_DATA_SEPARATION_TOKEN = '_%_';

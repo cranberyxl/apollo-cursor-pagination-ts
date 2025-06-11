@@ -224,4 +224,4 @@ const apolloCursorPaginationBuilder =
     };
   };
 
-module.exports = apolloCursorPaginationBuilder;
+export default apolloCursorPaginationBuilder;
