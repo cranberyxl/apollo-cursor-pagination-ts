@@ -73,4 +73,10 @@ export default [
   ...typescriptConfig,
   // Prettier Config
   ...prettierConfig,
+  {
+    name: 'custom/rules',
+    rules: {
+      'import-x/extensions': ['error', 'never'],
+    },
+  },
 ];
