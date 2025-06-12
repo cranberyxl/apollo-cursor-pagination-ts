@@ -384,44 +384,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cranberyxl/apollo-cursor-pagination@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "@cranberyxl/apollo-cursor-pagination@workspace:."
-  dependencies:
-    "@eslint/compat": "npm:^1.2.9"
-    "@eslint/js": "npm:^9.28.0"
-    "@faker-js/faker": "npm:^9.8.0"
-    "@jest/globals": "npm:^29.7.0"
-    "@stylistic/eslint-plugin": "npm:^3.1.0"
-    "@swc/cli": "npm:^0.7.7"
-    "@swc/core": "npm:^1.12.0"
-    "@swc/jest": "npm:^0.2.38"
-    "@types/jest": "npm:^29.5.12"
-    "@types/node": "npm:^16.0.0"
-    "@types/rosie": "npm:^0.0.45"
-    eslint: "npm:^9.28.0"
-    eslint-config-airbnb-base: "npm:^13.1.0"
-    eslint-config-airbnb-extended: "npm:^1.0.11"
-    eslint-config-prettier: "npm:^10.1.5"
-    eslint-import-resolver-typescript: "npm:^4.4.3"
-    eslint-plugin-import: "npm:^2.14.0"
-    eslint-plugin-import-x: "npm:^4.15.1"
-    eslint-plugin-jest: "npm:^21.25.0"
-    eslint-plugin-n: "npm:^17.19.0"
-    eslint-plugin-prettier: "npm:^5.4.1"
-    jest: "npm:^29.7.0"
-    knex: "npm:^3.1.0"
-    prettier: "npm:^3.5.3"
-    rosie: "npm:^2.1.1"
-    sqlite3: "npm:^5.1.7"
-    ts-node: "npm:^10.9.2"
-    typescript: "npm:^5.8.3"
-    typescript-eslint: "npm:^8.34.0"
-  peerDependencies:
-    knex: "*"
-  languageName: unknown
-  linkType: soft
-
 "@cspotcode/source-map-support@npm:^0.8.0":
   version: 0.8.1
   resolution: "@cspotcode/source-map-support@npm:0.8.1"
@@ -2162,6 +2124,44 @@ __metadata:
   checksum: 10c0/57b06ae984bc32a0d22592c87384cd88fe4511b1dd7581497831c56d41939c8a001b28e7b853e1450f2bf61992dfcaa8ae2d0d161a0a90c4fb631ef07098fbac
   languageName: node
   linkType: hard
+
+"apollo-cursor-pagination-ts@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "apollo-cursor-pagination-ts@workspace:."
+  dependencies:
+    "@eslint/compat": "npm:^1.2.9"
+    "@eslint/js": "npm:^9.28.0"
+    "@faker-js/faker": "npm:^9.8.0"
+    "@jest/globals": "npm:^29.7.0"
+    "@stylistic/eslint-plugin": "npm:^3.1.0"
+    "@swc/cli": "npm:^0.7.7"
+    "@swc/core": "npm:^1.12.0"
+    "@swc/jest": "npm:^0.2.38"
+    "@types/jest": "npm:^29.5.12"
+    "@types/node": "npm:^16.0.0"
+    "@types/rosie": "npm:^0.0.45"
+    eslint: "npm:^9.28.0"
+    eslint-config-airbnb-base: "npm:^13.1.0"
+    eslint-config-airbnb-extended: "npm:^1.0.11"
+    eslint-config-prettier: "npm:^10.1.5"
+    eslint-import-resolver-typescript: "npm:^4.4.3"
+    eslint-plugin-import: "npm:^2.14.0"
+    eslint-plugin-import-x: "npm:^4.15.1"
+    eslint-plugin-jest: "npm:^21.25.0"
+    eslint-plugin-n: "npm:^17.19.0"
+    eslint-plugin-prettier: "npm:^5.4.1"
+    jest: "npm:^29.7.0"
+    knex: "npm:^3.1.0"
+    prettier: "npm:^3.5.3"
+    rosie: "npm:^2.1.1"
+    sqlite3: "npm:^5.1.7"
+    ts-node: "npm:^10.9.2"
+    typescript: "npm:^5.8.3"
+    typescript-eslint: "npm:^8.34.0"
+  peerDependencies:
+    knex: "*"
+  languageName: unknown
+  linkType: soft
 
 "aproba@npm:^1.0.3 || ^2.0.0":
   version: 2.0.0

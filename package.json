@@ -1,5 +1,5 @@
 {
-  "name": "@cranberyxl/apollo-cursor-pagination",
+  "name": "apollo-cursor-pagination-ts",
   "version": "2.0.0-alpha.1",
   "description": "Relay's Connection implementation for Apollo Server GraphQL library with primary key support for cursor generation.",
   "type": "module",
