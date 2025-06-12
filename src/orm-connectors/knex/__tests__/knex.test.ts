@@ -2,8 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import knex, { Knex } from 'knex';
 import { Factory } from 'rosie';
 import { faker } from '@faker-js/faker';
-import paginateUntyped from '..';
-import {
+import paginate, {
   cursorGenerator,
   getDataFromCursor,
   orderNodesBy,
@@ -25,13 +24,6 @@ interface TestNode {
   age: number;
 }
 
-interface PageInfo {
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  startCursor: string | null;
-  endCursor: string | null;
-}
-
 interface Edge<T> {
   cursor: string;
   node: T;
@@ -42,30 +34,6 @@ const factory = Factory.define<TestNode>('test_node').attrs({
   age: faker.number.int,
   id: faker.number.int,
 });
-
-const paginate = paginateUntyped as unknown as (
-  query: Knex.QueryBuilder,
-  params: PaginationParams,
-  opts?: {
-    isAggregateFn?: (column: string) => boolean;
-    formatColumnFn?: (column: string) => any;
-    skipTotalCount?: boolean;
-    modifyEdgeFn?: (edge: TestNode) => TestNode;
-  }
-) => Promise<{
-  edges: Edge<TestNode>[];
-  pageInfo: PageInfo;
-  totalCount: number;
-}>;
-
-interface PaginationParams {
-  before?: string | null;
-  after?: string | null;
-  first?: number | null;
-  last?: number | null;
-  orderBy?: string | string[];
-  orderDirection?: string | string[];
-}
 
 describe('non-db functions', () => {
   it('cursorGenerator', () => {
@@ -95,7 +63,7 @@ describe('non-db functions', () => {
     expect(decode(encode('test'))).toBe('test');
   });
   it('formatColumnIfAvailable', () => {
-    expect(formatColumnIfAvailable('test', null, true)).toBe('test');
+    expect(formatColumnIfAvailable('test', undefined, true)).toBe('test');
     expect(
       formatColumnIfAvailable(
         'test',
@@ -118,9 +86,10 @@ describe('non-db functions', () => {
 
   it('convertNodesToEdges', () => {
     const nodes = [{ id: 1, name: 'test', age: 1 }];
-    const result = convertNodesToEdges(nodes, null, {
+    const result = convertNodesToEdges(nodes, undefined, {
       orderColumn: 'id',
       primaryKey: 'id',
+      ascOrDesc: 'asc',
     });
     expect(result).toEqual([
       { cursor: 'MV8qXzE=', node: { id: 1, name: 'test', age: 1 } },
@@ -187,6 +156,9 @@ describe('Knex Custom Pagination with SQLite', () => {
       const nodes = factory.buildList(10);
       await db('test_table').insert(nodes);
       const result = await orderNodesBy(db('test_table'), {
+        orderColumn: 'id',
+        ascOrDesc: 'asc',
+        primaryKey: 'id',
         formatColumnFn: undefined,
       });
       expect(result).toEqual(nodes.sort((a, b) => a.id - b.id));
@@ -196,6 +168,8 @@ describe('Knex Custom Pagination with SQLite', () => {
       await db('test_table').insert(nodes);
       const result = await orderNodesBy(db('test_table'), {
         orderColumn: 'age',
+        ascOrDesc: 'asc',
+        primaryKey: 'id',
         formatColumnFn: (c: string) => {
           if (c === 'age') return 'id';
           return c;
@@ -208,6 +182,8 @@ describe('Knex Custom Pagination with SQLite', () => {
       await db('test_table').insert(nodes);
       const result = await orderNodesBy(db('test_table'), {
         orderColumn: 'age',
+        ascOrDesc: 'asc',
+        primaryKey: 'id',
         formatColumnFn: undefined,
       });
       expect(result).toEqual(nodes.sort((a, b) => a.age - b.age));
@@ -218,6 +194,7 @@ describe('Knex Custom Pagination with SQLite', () => {
       const result = await orderNodesBy(db('test_table'), {
         orderColumn: 'age',
         ascOrDesc: 'desc',
+        primaryKey: 'id',
         formatColumnFn: undefined,
       });
       expect(result).toEqual(nodes.sort((a, b) => b.age - a.age));
@@ -230,9 +207,10 @@ describe('Knex Custom Pagination with SQLite', () => {
     // removeNodesBeforeAndIncluding(resultSet, 'B') should return [C, D]
     it('id asc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
-      const edges = convertNodesToEdges(nodes, null, {
+      const edges = convertNodesToEdges(nodes, undefined, {
         orderColumn: 'id',
         primaryKey: 'id',
+        ascOrDesc: 'asc',
       });
       await db('test_table').insert(nodes);
       const result = await removeNodesBeforeAndIncluding(
@@ -250,9 +228,10 @@ describe('Knex Custom Pagination with SQLite', () => {
     });
     it('id desc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
-      const edges = convertNodesToEdges(nodes, null, {
+      const edges = convertNodesToEdges(nodes, undefined, {
         orderColumn: 'id',
         primaryKey: 'id',
+        ascOrDesc: 'desc',
       });
       await db('test_table').insert(nodes);
       const result = await removeNodesBeforeAndIncluding(
@@ -279,9 +258,10 @@ describe('Knex Custom Pagination with SQLite', () => {
 
     it('id asc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
-      const edges = convertNodesToEdges(nodes, null, {
+      const edges = convertNodesToEdges(nodes, undefined, {
         orderColumn: 'id',
         primaryKey: 'id',
+        ascOrDesc: 'asc',
       });
       await db('test_table').insert(nodes);
       const result = await removeNodesAfterAndIncluding(
@@ -299,9 +279,10 @@ describe('Knex Custom Pagination with SQLite', () => {
     });
     it('id desc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
-      const edges = convertNodesToEdges(nodes, null, {
+      const edges = convertNodesToEdges(nodes, undefined, {
         orderColumn: 'id',
         primaryKey: 'id',
+        ascOrDesc: 'desc',
       });
       await db('test_table').insert(nodes);
       const result = await removeNodesAfterAndIncluding(
@@ -358,9 +339,10 @@ describe('Knex Custom Pagination with SQLite', () => {
 
     beforeEach(async () => {
       nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
-      edges = convertNodesToEdges(nodes, null, {
+      edges = convertNodesToEdges(nodes, undefined, {
         orderColumn: 'id',
         primaryKey: 'id',
+        ascOrDesc: 'asc',
       });
       await db('test_table').insert(nodes);
     });
@@ -638,9 +620,10 @@ describe('Knex Custom Pagination with SQLite', () => {
             ? (a.name ?? '').localeCompare(b.name ?? '')
             : a.id - b.id
         );
-        edges = convertNodesToEdges(nodes, null, {
+        edges = convertNodesToEdges(nodes, undefined, {
           orderColumn: 'name',
           primaryKey: 'id',
+          ascOrDesc: 'asc',
         });
         await db('test_table').insert(additionalNode);
 
@@ -690,9 +673,10 @@ describe('Knex Custom Pagination with SQLite', () => {
             ? (a.name ?? '').localeCompare(b.name ?? '')
             : a.age - b.age
         );
-        edges = convertNodesToEdges(nodes, null, {
+        edges = convertNodesToEdges(nodes, undefined, {
           orderColumn: ['name', 'age'],
           primaryKey: 'id',
+          ascOrDesc: ['asc', 'asc'],
         });
         await db('test_table').insert(additionalNode);
 
@@ -742,9 +726,10 @@ describe('Knex Custom Pagination with SQLite', () => {
             ? (a.name ?? '').localeCompare(b.name ?? '')
             : a.age - b.age
         );
-        edges = convertNodesToEdges(nodes, null, {
+        edges = convertNodesToEdges(nodes, undefined, {
           orderColumn: ['name', 'age'],
           primaryKey: 'id',
+          ascOrDesc: 'asc',
         });
         await db('test_table').insert(additionalNode);
 
@@ -808,9 +793,10 @@ describe('Knex Custom Pagination with SQLite', () => {
 
         nodes[0].name = null;
 
-        edges = convertNodesToEdges(nodes, null, {
+        edges = convertNodesToEdges(nodes, undefined, {
           orderColumn: 'name',
           primaryKey: 'id',
+          ascOrDesc: 'asc',
         });
 
         const result = await paginate(db('test_table'), {
@@ -876,9 +862,10 @@ describe('Knex Custom Pagination with SQLite', () => {
             : (a.name ?? '').localeCompare(b.name ?? '')
         );
 
-        edges = convertNodesToEdges(nodes, null, {
+        edges = convertNodesToEdges(nodes, undefined, {
           orderColumn: 'name',
           primaryKey: 'id',
+          ascOrDesc: 'asc',
         });
 
         const result = await paginate(db('test_table'), {
