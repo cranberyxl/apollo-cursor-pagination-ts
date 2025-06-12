@@ -19,8 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@cranberyxl'
 
       - name: Enable Corepack
         run: corepack enable
@@ -45,9 +43,8 @@ jobs:
 
       - name: Configure Yarn for publishing
         run: |
-          yarn config set npmRegistryServer "https://npm.pkg.github.com"
-          yarn config set npmAuthToken "${{ secrets.GITHUB_TOKEN }}"
-          yarn config set npmScopes.cranberyxl.npmRegistryServer "https://npm.pkg.github.com"
+          yarn config set npmRegistryServer "https://registry.npmjs.org"
+          yarn config set npmAuthToken "${{ secrets.NPM_TOKEN }}"
 
-      - name: Publish to GitHub Package Registry
+      - name: Publish to npm
         run: yarn npm publish
