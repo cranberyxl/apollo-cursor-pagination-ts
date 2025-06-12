@@ -22,13 +22,14 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@cranberyxl'
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Setup Yarn
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
+        run: corepack prepare yarn@stable --activate
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --immutable
 
       - name: Type check
         run: yarn typecheck
@@ -43,6 +44,6 @@ jobs:
         run: yarn build
 
       - name: Publish to GitHub Package Registry
-        run: yarn publish
+        run: yarn npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
