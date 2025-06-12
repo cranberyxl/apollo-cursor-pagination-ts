@@ -3,11 +3,19 @@
 Implementation of Relay's Connection specs for Apollo Server. Allows your Apollo Server to do cursor-based pagination. It can connect to any ORM, but only the connection with Knex.js is implemented currently.
 Added primary key support.
 
-Forked from: [FleekHQ/apollo-cursor-pagination](https://github.com/FleekHQ/apollo-cursor-pagination)
+Forked from: [Pocket/apollo-cursor-pagination](https://github.com/FleekHQ/apollo-cursor-pagination)
+
+Converted to typescript
 
 ## Installation
 
-`npm install @pocket-tools/apollo-cursor-pagination`
+```sh
+npm install apollo-cursor-pagination-ts
+```
+
+```sh
+yarn install apollo-cursor-pagination-ts
+```
 
 ## Usage
 
@@ -33,18 +41,23 @@ import knex from '../../../db'; // Or instantiate a connection here
 export default async (_, args) => {
   // orderBy must be the column to sort with or an array of columns for ordering by multiple fields
   // orderDirection must be 'asc' or 'desc', or an array of those values if ordering by multiples
-  const {
-    first, last, before, after, orderBy, orderDirection,
-  } = args;
+  const { first, last, before, after, orderBy, orderDirection } = args;
 
   const baseQuery = knex('cats');
 
-  const result = await paginate(baseQuery, {first, last, before, after, orderBy, orderDirection});
+  const result = await paginate(baseQuery, {
+    first,
+    last,
+    before,
+    after,
+    orderBy,
+    orderDirection,
+  });
   /* result will contain:
-  * edges
-  * totalCount
-  * pageInfo { hasPreviousPage, hasNextPage, }
-  */
+   * edges
+   * totalCount
+   * pageInfo { hasPreviousPage, hasNextPage, }
+   */
   return result;
 };
 ```
@@ -63,8 +76,8 @@ const result = await paginate(
   {
     formatColumnFn: (column) => {
       // Logic to transform your column name goes here...
-      return column
-    }
+      return column;
+    },
   }
 );
 ```
@@ -77,22 +90,23 @@ database column name is "created_at" and the column name on the model is "create
 <details>
   <summary>An example with Objection columnNameMappers</summary>
 
-  ```javascript
-  const result = await paginate(
-    baseQuery,
-    { first, last, before, after, orderBy, orderDirection },
-    {
-      formatColumnFn: (column) => {
-        if (Model.columnNameMappers && Model.columnNameMappers.format) {
-          const result = Model.columnNameMappers.format({ [column]: true })
-          return Object.keys(result)[0]
-        } else {
-          return column
-        }
+```javascript
+const result = await paginate(
+  baseQuery,
+  { first, last, before, after, orderBy, orderDirection },
+  {
+    formatColumnFn: (column) => {
+      if (Model.columnNameMappers && Model.columnNameMappers.format) {
+        const result = Model.columnNameMappers.format({ [column]: true });
+        return Object.keys(result)[0];
+      } else {
+        return column;
       }
-    }
-  );
-  ```
+    },
+  }
+);
+```
+
 </details>
 
 #### Customizing Edges
@@ -108,7 +122,7 @@ const result = await paginate(
     modifyEdgeFn: (edge) => ({
       ...edge,
       custom: 'foo',
-    })
+    }),
   }
 );
 ```
