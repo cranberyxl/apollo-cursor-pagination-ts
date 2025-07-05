@@ -77,6 +77,16 @@ export default [
     name: 'custom/rules',
     rules: {
       'import-x/extensions': ['error', 'never'],
+      'import-x/no-extraneous-dependencies': [
+        'error',
+        {
+          devDependencies: [
+            'src/**/__tests__/**/*.ts',
+            'eslint.config.mjs',
+            'src/testUtil/**/*.ts',
+          ],
+        },
+      ],
     },
   },
 ];
