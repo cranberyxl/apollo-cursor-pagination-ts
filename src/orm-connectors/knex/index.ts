@@ -79,13 +79,13 @@ function buildRemoveNodesFromBeforeOrAfter<
   TRecord extends {} = TResult,
 >(
   beforeOrAfter: 'before'
-): KnexOperatorFunctions<TResult, TRecord>['removeNodesBeforeAndIncluding'];
+): KnexOperatorFunctions<TResult, TRecord>['applyAfterCursor'];
 function buildRemoveNodesFromBeforeOrAfter<
   TResult extends {},
   TRecord extends {} = TResult,
 >(
   beforeOrAfter: 'after'
-): KnexOperatorFunctions<TResult, TRecord>['removeNodesAfterAndIncluding'];
+): KnexOperatorFunctions<TResult, TRecord>['applyBeforeCursor'];
 
 function buildRemoveNodesFromBeforeOrAfter<
   TResult extends {},
@@ -204,17 +204,17 @@ function buildRemoveNodesFromBeforeOrAfter<
   };
 }
 
-export const orderNodesBy = <TResult extends {}, TRecord extends {} = TResult>(
+export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
   nodesAccessor: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['orderNodesBy']
+    KnexOperatorFunctions<TResult, TRecord>['applyOrderBy']
   >[0],
   {
     orderColumn = 'id',
     ascOrDesc = 'asc',
     formatColumnFn,
     primaryKey = 'id',
-  }: Parameters<KnexOperatorFunctions<TResult, TRecord>['orderNodesBy']>[1]
-): ReturnType<KnexOperatorFunctions<TResult, TRecord>['orderNodesBy']> => {
+  }: Parameters<KnexOperatorFunctions<TResult, TRecord>['applyOrderBy']>[1]
+): ReturnType<KnexOperatorFunctions<TResult, TRecord>['applyOrderBy']> => {
   const initialValue = nodesAccessor.clone();
   const result = operateOverScalarOrArray(
     initialValue,
@@ -264,57 +264,55 @@ export const orderNodesBy = <TResult extends {}, TRecord extends {} = TResult>(
 // Used when `after` is included in the query
 // It must slice the result set from the element after the one with the given cursor until the end.
 // e.g. let [A, B, C, D] be the `resultSet`
-// removeNodesBeforeAndIncluding(resultSet, 'B') should return [C, D]
-export const removeNodesBeforeAndIncluding =
-  buildRemoveNodesFromBeforeOrAfter('before');
+// applyAfterCursor(resultSet, 'B') should return [C, D]
+export const applyAfterCursor = buildRemoveNodesFromBeforeOrAfter('before');
 
 // Used when `first` is included in the query
 // It must remove nodes from the result set starting from the end until it's of size `length`.
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesFromEnd(resultSet, 3) should return [A, B, C]
-export const removeNodesFromEnd = <
+export const returnNodesForFirst = <
   TResult extends {},
   TRecord extends {} = TResult,
 >(
   nodesAccessor: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['removeNodesFromEnd']
+    KnexOperatorFunctions<TResult, TRecord>['returnNodesForFirst']
   >[0],
   first: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['removeNodesFromEnd']
+    KnexOperatorFunctions<TResult, TRecord>['returnNodesForFirst']
   >[1]
-): ReturnType<KnexOperatorFunctions<TResult, TRecord>['removeNodesFromEnd']> =>
+): ReturnType<KnexOperatorFunctions<TResult, TRecord>['returnNodesForFirst']> =>
   nodesAccessor.clone().limit(first);
 
 // Used when `before` is included in the query
 // It must remove all nodes after and including the one with cursor `cursorOfInitialNode`
 // e.g. let [A, B, C, D] be the `resultSet`
-// removeNodesAfterAndIncluding(resultSet, 'C') should return [A, B]
-export const removeNodesAfterAndIncluding =
-  buildRemoveNodesFromBeforeOrAfter('after');
+// applyBeforeCursor(resultSet, 'C') should return [A, B]
+export const applyBeforeCursor = buildRemoveNodesFromBeforeOrAfter('after');
 
 // Used when `last` is included in the query
 // It must remove nodes from the result set starting from the beginning until it's of size `length`.
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesFromBeginning(resultSet, 3) should return [B, C, D]
-export const removeNodesFromBeginning = <
+export const returnNodesForLast = <
   TResult extends {},
   TRecord extends {} = TResult,
 >(
   nodesAccessor: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['removeNodesFromBeginning']
+    KnexOperatorFunctions<TResult, TRecord>['returnNodesForLast']
   >[0],
   last: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['removeNodesFromBeginning']
+    KnexOperatorFunctions<TResult, TRecord>['returnNodesForLast']
   >[1],
   {
     orderColumn,
     ascOrDesc,
     primaryKey,
   }: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['removeNodesFromBeginning']
+    KnexOperatorFunctions<TResult, TRecord>['returnNodesForLast']
   >[2]
 ): ReturnType<
-  KnexOperatorFunctions<TResult, TRecord>['removeNodesFromBeginning']
+  KnexOperatorFunctions<TResult, TRecord>['returnNodesForLast']
 > => {
   const invertedOrderArray = operateOverScalarOrArray(
     [] as string[],
@@ -328,7 +326,7 @@ export const removeNodesFromBeginning = <
       ? invertedOrderArray[0]
       : invertedOrderArray;
 
-  const subquery = orderNodesBy(nodesAccessor.clone().clearOrder(), {
+  const subquery = applyOrderBy(nodesAccessor.clone().clearOrder(), {
     orderColumn,
     ascOrDesc: order as 'asc' | 'desc',
     primaryKey,
@@ -341,14 +339,16 @@ export const removeNodesFromBeginning = <
   return result;
 };
 
-export const getNodesLength = async <
+export const calculateTotalCount = async <
   TResult extends {},
   TRecord extends {} = TResult,
 >(
   nodesAccessor: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['getNodesLength']
+    KnexOperatorFunctions<TResult, TRecord>['calculateTotalCount']
   >[0]
-): ReturnType<KnexOperatorFunctions<TResult, TRecord>['getNodesLength']> => {
+): ReturnType<
+  KnexOperatorFunctions<TResult, TRecord>['calculateTotalCount']
+> => {
   const counts = await nodesAccessor.clone().clearSelect().count('*');
   const result = counts.reduce((prev: number, curr: any) => {
     const currCount = curr.count || curr['count(*)'];
@@ -436,25 +436,25 @@ export default function paginate<
     Knex.QueryBuilder<TResult, TRecord>,
     KnexOrderByColumn<TResult>
   >({
-    removeNodesBeforeAndIncluding: removeNodesBeforeAndIncluding as unknown as (
+    applyAfterCursor: applyAfterCursor as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       cursor: string,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Knex.QueryBuilder<TResult, TRecord>,
-    removeNodesAfterAndIncluding: removeNodesAfterAndIncluding as unknown as (
+    applyBeforeCursor: applyBeforeCursor as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       cursor: string,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Knex.QueryBuilder<TResult, TRecord>,
-    getNodesLength: getNodesLength as unknown as (
+    calculateTotalCount: calculateTotalCount as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>
     ) => Promise<number>,
-    removeNodesFromEnd: removeNodesFromEnd as unknown as (
+    returnNodesForFirst: returnNodesForFirst as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       count: number,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Promise<TResult[]>,
-    removeNodesFromBeginning: removeNodesFromBeginning as unknown as (
+    returnNodesForLast: returnNodesForLast as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       count: number,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
@@ -464,7 +464,7 @@ export default function paginate<
       params: any,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => { cursor: string; node: TResult }[],
-    orderNodesBy: orderNodesBy as unknown as (
+    applyOrderBy: applyOrderBy as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Knex.QueryBuilder<TResult, TRecord>,

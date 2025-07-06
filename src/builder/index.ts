@@ -30,33 +30,33 @@ export const decode = (str: string): string =>
   Buffer.from(str, 'base64').toString();
 
 export interface OperatorFunctions<N, NA, C> {
-  removeNodesBeforeAndIncluding: (
+  applyAfterCursor: (
     nodeAccessor: NA,
     cursor: string,
     opts: OrderArgs<C>
   ) => NA;
-  removeNodesAfterAndIncluding: (
+  applyBeforeCursor: (
     nodeAccessor: NA,
     cursor: string,
     opts: OrderArgs<C>
   ) => NA;
-  removeNodesFromEnd: (
+  applyOrderBy: (nodeAccessor: NA, opts: OrderArgs<C>) => NA;
+  returnNodesForFirst: (
     nodeAccessor: NA,
     count: number,
     opts: OrderArgs<C>
   ) => Promise<N[]>;
-  removeNodesFromBeginning: (
+  returnNodesForLast: (
     nodeAccessor: NA,
     count: number,
     opts: OrderArgs<C>
   ) => Promise<N[]>;
-  getNodesLength: (nodeAccessor: NA) => Promise<number>;
+  calculateTotalCount: (nodeAccessor: NA) => Promise<number>;
   convertNodesToEdges: (
     nodes: N[],
     params: GraphQLParams | undefined,
     opts: OrderArgs<C>
   ) => { cursor: string; node: N }[];
-  orderNodesBy: (nodeAccessor: NA, opts: OrderArgs<C>) => NA;
 }
 
 export interface BuilderOptions<C = string>
@@ -88,20 +88,20 @@ const applyCursorsToNodes = <N, NA, C>(
   allNodesAccessor: NA,
   { before, after }: Pick<GraphQLParams, 'before' | 'after'>,
   {
-    removeNodesBeforeAndIncluding,
-    removeNodesAfterAndIncluding,
+    applyAfterCursor,
+    applyBeforeCursor,
   }: Pick<
     OperatorFunctions<N, NA, C>,
-    'removeNodesBeforeAndIncluding' | 'removeNodesAfterAndIncluding'
+    'applyAfterCursor' | 'applyBeforeCursor'
   >,
   opts: OrderArgs<C>
 ): NA => {
   let nodesAccessor = allNodesAccessor;
   if (after) {
-    nodesAccessor = removeNodesBeforeAndIncluding(nodesAccessor, after, opts);
+    nodesAccessor = applyAfterCursor(nodesAccessor, after, opts);
   }
   if (before) {
-    nodesAccessor = removeNodesAfterAndIncluding(nodesAccessor, before, opts);
+    nodesAccessor = applyBeforeCursor(nodesAccessor, before, opts);
   }
   return nodesAccessor;
 };
@@ -113,11 +113,11 @@ const nodesToReturn = async <N, NA, C = string>(
   allNodesAccessor: NA,
   operatorFunctions: Pick<
     OperatorFunctions<N, NA, C>,
-    | 'removeNodesBeforeAndIncluding'
-    | 'removeNodesAfterAndIncluding'
-    | 'removeNodesFromEnd'
-    | 'removeNodesFromBeginning'
-    | 'orderNodesBy'
+    | 'applyAfterCursor'
+    | 'applyBeforeCursor'
+    | 'returnNodesForFirst'
+    | 'returnNodesForLast'
+    | 'applyOrderBy'
   >,
   {
     before,
@@ -127,7 +127,7 @@ const nodesToReturn = async <N, NA, C = string>(
   }: Pick<GraphQLParams, 'before' | 'after' | 'first' | 'last'>,
   opts: OrderArgs<C>
 ): Promise<{ nodes: N[]; hasNextPage: boolean; hasPreviousPage: boolean }> => {
-  const orderedNodesAccessor = operatorFunctions.orderNodesBy(
+  const orderedNodesAccessor = operatorFunctions.applyOrderBy(
     allNodesAccessor,
     opts
   );
@@ -135,10 +135,8 @@ const nodesToReturn = async <N, NA, C = string>(
     orderedNodesAccessor,
     { before, after },
     {
-      removeNodesBeforeAndIncluding:
-        operatorFunctions.removeNodesBeforeAndIncluding,
-      removeNodesAfterAndIncluding:
-        operatorFunctions.removeNodesAfterAndIncluding,
+      applyAfterCursor: operatorFunctions.applyAfterCursor,
+      applyBeforeCursor: operatorFunctions.applyBeforeCursor,
     },
     opts
   );
@@ -147,7 +145,7 @@ const nodesToReturn = async <N, NA, C = string>(
   let nodes: N[] = [];
   if (first) {
     if (first < 0) throw new Error('`first` argument must not be less than 0');
-    nodes = await operatorFunctions.removeNodesFromEnd(
+    nodes = await operatorFunctions.returnNodesForFirst(
       nodesAccessor,
       first + 1,
       opts
@@ -159,7 +157,7 @@ const nodesToReturn = async <N, NA, C = string>(
   }
   if (last) {
     if (last < 0) throw new Error('`last` argument must not be less than 0');
-    nodes = await operatorFunctions.removeNodesFromBeginning(
+    nodes = await operatorFunctions.returnNodesForLast(
       nodesAccessor,
       last + 1,
       opts
@@ -177,13 +175,13 @@ const nodesToReturn = async <N, NA, C = string>(
  */
 const apolloCursorPaginationBuilder =
   <N, NA, C>({
-    removeNodesBeforeAndIncluding,
-    removeNodesAfterAndIncluding,
-    getNodesLength,
-    removeNodesFromEnd,
-    removeNodesFromBeginning,
+    applyAfterCursor,
+    applyBeforeCursor,
+    calculateTotalCount,
+    returnNodesForFirst,
+    returnNodesForLast,
     convertNodesToEdges,
-    orderNodesBy,
+    applyOrderBy,
   }: OperatorFunctions<N, NA, C>) =>
   async (
     allNodesAccessor: NA,
@@ -212,11 +210,11 @@ const apolloCursorPaginationBuilder =
     const { nodes, hasPreviousPage, hasNextPage } = await nodesToReturn(
       allNodesAccessor,
       {
-        removeNodesBeforeAndIncluding,
-        removeNodesAfterAndIncluding,
-        removeNodesFromEnd,
-        removeNodesFromBeginning,
-        orderNodesBy,
+        applyAfterCursor,
+        applyBeforeCursor,
+        returnNodesForFirst,
+        returnNodesForLast,
+        applyOrderBy,
       },
       {
         before,
@@ -234,7 +232,7 @@ const apolloCursorPaginationBuilder =
     );
 
     const totalCount = !skipTotalCount
-      ? await getNodesLength(allNodesAccessor)
+      ? await calculateTotalCount(allNodesAccessor)
       : undefined;
 
     let edges = convertNodesToEdges(

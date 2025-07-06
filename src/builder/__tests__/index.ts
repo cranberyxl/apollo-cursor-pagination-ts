@@ -19,25 +19,25 @@ describe('apolloCursorPaginationBuilder', () => {
   ];
 
   const mockOperatorFunctions: OperatorFunctions<Node, Node[], string> = {
-    removeNodesBeforeAndIncluding: (nodes: Node[], cursor: string) => {
+    applyAfterCursor: (nodes: Node[], cursor: string) => {
       const cursorId = parseInt(cursor.split(':')[1], 10);
       return nodes.filter((node) => node.id > cursorId);
     },
-    removeNodesAfterAndIncluding: (nodes: Node[], cursor: string) => {
+    applyBeforeCursor: (nodes: Node[], cursor: string) => {
       const cursorId = parseInt(cursor.split(':')[1], 10);
       return nodes.filter((node) => node.id < cursorId);
     },
-    getNodesLength: async (nodes: Node[]) => nodes.length,
-    removeNodesFromEnd: async (nodes: Node[], first: number) =>
+    calculateTotalCount: async (nodes: Node[]) => nodes.length,
+    returnNodesForFirst: async (nodes: Node[], first: number) =>
       nodes.slice(0, first),
-    removeNodesFromBeginning: async (nodes: Node[], last: number) =>
+    returnNodesForLast: async (nodes: Node[], last: number) =>
       nodes.slice(-last),
     convertNodesToEdges: (nodes: Node[]) =>
       nodes.map((node) => ({
         cursor: `cursor:${node.id}`,
         node,
       })),
-    orderNodesBy: (nodes: Node[], options: OrderArgs<string>) =>
+    applyOrderBy: (nodes: Node[], options: OrderArgs<string>) =>
       [...nodes].sort((a, b) => {
         const aVal = a[options.orderColumn as keyof Node];
         const bVal = b[options.orderColumn as keyof Node];

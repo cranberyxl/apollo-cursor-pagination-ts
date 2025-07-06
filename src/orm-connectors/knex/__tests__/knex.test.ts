@@ -5,14 +5,14 @@ import { faker } from '@faker-js/faker';
 import paginate, {
   cursorGenerator,
   getDataFromCursor,
-  orderNodesBy,
+  applyOrderBy,
   convertNodesToEdges,
-  getNodesLength,
+  calculateTotalCount,
   formatColumnIfAvailable,
-  removeNodesBeforeAndIncluding,
-  removeNodesFromEnd,
-  removeNodesAfterAndIncluding,
-  removeNodesFromBeginning,
+  applyAfterCursor,
+  applyBeforeCursor,
+  returnNodesForFirst,
+  returnNodesForLast,
 } from '..';
 import { decode, encode } from '../../../builder';
 
@@ -122,24 +122,24 @@ describe('Knex Custom Pagination with SQLite', () => {
     await db.schema.dropTable('test_table');
   });
 
-  describe('getNodesLength', () => {
+  describe('calculateTotalCount', () => {
     it('returns the number of nodes in a query', async () => {
       await db('test_table').insert(factory.build());
-      const result = await getNodesLength(db('test_table'));
+      const result = await calculateTotalCount(db('test_table'));
       expect(result).toBe(1);
     });
     it('returns the number of nodes a query with a select', async () => {
       await db('test_table').insert(factory.build());
-      const result = await getNodesLength(db('test_table').select('age'));
+      const result = await calculateTotalCount(db('test_table').select('age'));
       expect(result).toBe(1);
     });
   });
 
-  describe('orderNodesBy', () => {
+  describe('applyOrderBy', () => {
     it('defaults', async () => {
       const nodes = factory.buildList(10);
       await db('test_table').insert(nodes);
-      const result = await orderNodesBy(db('test_table'), {
+      const result = await applyOrderBy(db('test_table'), {
         orderColumn: 'id',
         ascOrDesc: 'asc',
         primaryKey: 'id',
@@ -150,7 +150,7 @@ describe('Knex Custom Pagination with SQLite', () => {
     it('formats column', async () => {
       const nodes = factory.buildList(10);
       await db('test_table').insert(nodes);
-      const result = await orderNodesBy(db('test_table'), {
+      const result = await applyOrderBy(db('test_table'), {
         orderColumn: 'age',
         ascOrDesc: 'asc',
         primaryKey: 'id',
@@ -164,7 +164,7 @@ describe('Knex Custom Pagination with SQLite', () => {
     it('orders the nodes by the given column', async () => {
       const nodes = factory.buildList(10);
       await db('test_table').insert(nodes);
-      const result = await orderNodesBy(db('test_table'), {
+      const result = await applyOrderBy(db('test_table'), {
         orderColumn: 'age',
         ascOrDesc: 'asc',
         primaryKey: 'id',
@@ -175,7 +175,7 @@ describe('Knex Custom Pagination with SQLite', () => {
     it('orders the nodes by the given column desc', async () => {
       const nodes = factory.buildList(10);
       await db('test_table').insert(nodes);
-      const result = await orderNodesBy(db('test_table'), {
+      const result = await applyOrderBy(db('test_table'), {
         orderColumn: 'age',
         ascOrDesc: 'desc',
         primaryKey: 'id',
@@ -184,7 +184,7 @@ describe('Knex Custom Pagination with SQLite', () => {
       expect(result).toEqual(nodes.sort((a, b) => b.age - a.age));
     });
   });
-  describe('removeNodesBeforeAndIncluding', () => {
+  describe('applyAfterCursor', () => {
     // Used when `after` is included in the query
     // It must slice the result set from the element after the one with the given cursor until the end.
     // e.g. let [A, B, C, D] be the `resultSet`
@@ -197,17 +197,13 @@ describe('Knex Custom Pagination with SQLite', () => {
         ascOrDesc: 'asc',
       });
       await db('test_table').insert(nodes);
-      const result = await removeNodesBeforeAndIncluding(
-        db('test_table'),
-        edges[5].cursor,
-        {
-          orderColumn: 'id',
-          primaryKey: 'id',
-          ascOrDesc: 'asc',
-          isAggregateFn: undefined,
-          formatColumnFn: undefined,
-        }
-      );
+      const result = await applyAfterCursor(db('test_table'), edges[5].cursor, {
+        orderColumn: 'id',
+        primaryKey: 'id',
+        ascOrDesc: 'asc',
+        isAggregateFn: undefined,
+        formatColumnFn: undefined,
+      });
       expect(result).toEqual(nodes.slice(6));
     });
     it('id desc', async () => {
@@ -218,23 +214,19 @@ describe('Knex Custom Pagination with SQLite', () => {
         ascOrDesc: 'desc',
       });
       await db('test_table').insert(nodes);
-      const result = await removeNodesBeforeAndIncluding(
-        db('test_table'),
-        edges[5].cursor,
-        {
-          orderColumn: 'id',
-          primaryKey: 'id',
-          ascOrDesc: 'desc',
-          isAggregateFn: undefined,
-          formatColumnFn: undefined,
-        }
-      );
+      const result = await applyAfterCursor(db('test_table'), edges[5].cursor, {
+        orderColumn: 'id',
+        primaryKey: 'id',
+        ascOrDesc: 'desc',
+        isAggregateFn: undefined,
+        formatColumnFn: undefined,
+      });
 
       expect(result).toEqual(nodes.slice(0, 5));
     });
   });
 
-  describe('removeNodesAfterAndIncluding', () => {
+  describe('applyBeforeCursor', () => {
     // Used when `before` is included in the query
     // It must remove all nodes after and including the one with cursor `cursorOfInitialNode`
     // e.g. let [A, B, C, D] be the `resultSet`
@@ -248,7 +240,7 @@ describe('Knex Custom Pagination with SQLite', () => {
         ascOrDesc: 'asc',
       });
       await db('test_table').insert(nodes);
-      const result = await removeNodesAfterAndIncluding(
+      const result = await applyBeforeCursor(
         db('test_table'),
         edges[5].cursor,
         {
@@ -269,7 +261,7 @@ describe('Knex Custom Pagination with SQLite', () => {
         ascOrDesc: 'desc',
       });
       await db('test_table').insert(nodes);
-      const result = await removeNodesAfterAndIncluding(
+      const result = await applyBeforeCursor(
         db('test_table'),
         edges[5].cursor,
         {
@@ -285,18 +277,18 @@ describe('Knex Custom Pagination with SQLite', () => {
     });
   });
 
-  it('removeNodesFromEnd', async () => {
+  it('returnNodesForFirst', async () => {
     const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
     await db('test_table').insert(nodes);
-    const result = await removeNodesFromEnd(db('test_table'), 3);
+    const result = await returnNodesForFirst(db('test_table'), 3);
     expect(result).toEqual(nodes.slice(0, 3));
   });
 
-  describe('removeNodesFromBeginning', () => {
+  describe('returnNodesForLast', () => {
     it('id asc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => b.id - a.id);
       await db('test_table').insert(nodes);
-      const result = await removeNodesFromBeginning(db('test_table'), 3, {
+      const result = await returnNodesForLast(db('test_table'), 3, {
         orderColumn: 'id',
         primaryKey: 'id',
         ascOrDesc: 'asc',
@@ -307,7 +299,7 @@ describe('Knex Custom Pagination with SQLite', () => {
     it('id desc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
       await db('test_table').insert(nodes);
-      const result = await removeNodesFromBeginning(db('test_table'), 3, {
+      const result = await returnNodesForLast(db('test_table'), 3, {
         orderColumn: 'id',
         primaryKey: 'id',
         ascOrDesc: 'desc',
