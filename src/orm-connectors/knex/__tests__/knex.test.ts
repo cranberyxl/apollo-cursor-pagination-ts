@@ -8,7 +8,6 @@ import paginate, {
   orderNodesBy,
   convertNodesToEdges,
   getNodesLength,
-  hasLengthGreaterThan,
   formatColumnIfAvailable,
   removeNodesBeforeAndIncluding,
   removeNodesFromEnd,
@@ -133,20 +132,6 @@ describe('Knex Custom Pagination with SQLite', () => {
       await db('test_table').insert(factory.build());
       const result = await getNodesLength(db('test_table').select('age'));
       expect(result).toBe(1);
-    });
-  });
-
-  describe('hasLengthGreaterThan', () => {
-    it('returns true if the query has more than the given amount of nodes', async () => {
-      await db('test_table').insert(factory.build());
-      const result = await hasLengthGreaterThan(db('test_table'), 0);
-      expect(result).toBe(true);
-    });
-
-    it('returns false if the query has less than the given amount of nodes', async () => {
-      await db('test_table').insert(factory.build());
-      const result = await hasLengthGreaterThan(db('test_table'), 1);
-      expect(result).toBe(false);
     });
   });
 

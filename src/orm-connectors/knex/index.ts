@@ -358,23 +358,6 @@ export const getNodesLength = async <
   return result;
 };
 
-export const hasLengthGreaterThan = async <
-  TResult extends {},
-  TRecord extends {} = TResult,
->(
-  nodesAccessor: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['hasLengthGreaterThan']
-  >[0],
-  amount: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['hasLengthGreaterThan']
-  >[1]
-): ReturnType<
-  KnexOperatorFunctions<TResult, TRecord>['hasLengthGreaterThan']
-> => {
-  const result = await nodesAccessor.clone().limit(amount + 1);
-  return result.length === amount + 1;
-};
-
 // Receives a list of nodes and returns it in edge form:
 // {
 //   cursor
@@ -466,10 +449,6 @@ export default function paginate<
     getNodesLength: getNodesLength as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>
     ) => Promise<number>,
-    hasLengthGreaterThan: hasLengthGreaterThan as unknown as (
-      nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
-      count: number
-    ) => Promise<boolean>,
     removeNodesFromEnd: removeNodesFromEnd as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       count: number,

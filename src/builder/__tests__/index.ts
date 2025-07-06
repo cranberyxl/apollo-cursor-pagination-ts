@@ -28,8 +28,6 @@ describe('apolloCursorPaginationBuilder', () => {
       return nodes.filter((node) => node.id < cursorId);
     },
     getNodesLength: async (nodes: Node[]) => nodes.length,
-    hasLengthGreaterThan: async (nodes: Node[], length: number) =>
-      nodes.length > length,
     removeNodesFromEnd: async (nodes: Node[], first: number) =>
       nodes.slice(0, first),
     removeNodesFromBeginning: async (nodes: Node[], last: number) =>

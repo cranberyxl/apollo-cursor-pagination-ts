@@ -51,7 +51,6 @@ export interface OperatorFunctions<N, NA, C> {
     opts: OrderArgs<C>
   ) => Promise<N[]>;
   getNodesLength: (nodeAccessor: NA) => Promise<number>;
-  hasLengthGreaterThan: (nodeAccessor: NA, count: number) => Promise<boolean>;
   convertNodesToEdges: (
     nodes: N[],
     params: GraphQLParams | undefined,
