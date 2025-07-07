@@ -1,51 +1,56 @@
 # Apollo Cursor Pagination
 
-Implementation of Relay's Connection specs for Apollo Server. Allows your Apollo Server to do cursor-based pagination. It can connect to any ORM, but only the connection with Knex.js is implemented currently.
-Added primary key support.
+A TypeScript implementation of [Relay's GraphQL Connection specification](https://relay.dev/graphql/connections.htm) for Apollo Server. This library provides cursor-based pagination that follows the Relay Connection spec, allowing your GraphQL API to implement efficient, stable pagination.
 
-Forked from: [Pocket/apollo-cursor-pagination](https://github.com/FleekHQ/apollo-cursor-pagination)
+This library was originally forked from [Pocket/apollo-cursor-pagination](https://github.com/Pocket/apollo-cursor-pagination) and has been converted to TypeScript with enhanced type safety and additional features.
 
-Converted to typescript
+## Features
+
+- ✅ **Relay Connection Spec Compliant**: Implements the complete [Relay Connection specification](https://relay.dev/graphql/connections.htm)
+- ✅ **TypeScript Support**: Full TypeScript support with comprehensive type definitions
+- ✅ **Multiple ORM Support**: Currently supports Knex.js with extensible architecture for other ORMs
+- ✅ **Primary Key Support**: Enhanced cursor generation with primary key support
+- ✅ **Flexible Ordering**: Support for single and multiple column ordering
+- ✅ **Custom Edge Modification**: Ability to add custom metadata to edges
+- ✅ **Column Name Formatting**: Support for custom column name transformations
 
 ## Installation
 
-```sh
+```bash
 npm install apollo-cursor-pagination-ts
 ```
 
-```sh
-yarn install apollo-cursor-pagination-ts
+```bash
+yarn add apollo-cursor-pagination-ts
 ```
 
-## Usage
+## Peer Dependencies
 
-### Using an existing connector
+This library requires the following peer dependencies:
 
-Use the `paginate` function of the connector in your GraphQL resolver.
+- **knex**: `*` (any version) - Required for the Knex.js connector
 
-`paginate` receives the following arguments:
+Make sure to install these in your project:
 
-1- `nodesAccessor`: An object that can be queried or accessed to obtain a reduced result set.
+```bash
+npm install knex
+```
 
-2- `args`: GraphQL args for your connection. Can have the following fields: `first`, `last`, `before`, `after`.
+## Quick Start
 
-3- `orderArgs`: If using a connector with stable cursor, you must indicate to `paginate` how are you sorting your query. Must contain `orderColumn` (which attribute you are ordering by) and `ascOrDesc` (which can be `asc` or `desc`). Note: apollo-cursor-pagination does not sort your query, you must do it yourself before calling `paginate`.
+### Basic Usage with Knex.js
 
-For example with the knex connector:
+```typescript
+import { knexPaginator } from 'apollo-cursor-pagination-ts';
+import knex from 'knex';
 
-```javascript
-// cats-connection.js
-import { knexPaginator as paginate } from 'apollo-cursor-pagination';
-import knex from '../../../db'; // Or instantiate a connection here
-
-export default async (_, args) => {
-  // orderBy must be the column to sort with or an array of columns for ordering by multiple fields
-  // orderDirection must be 'asc' or 'desc', or an array of those values if ordering by multiples
+// Your GraphQL resolver
+const catsResolver = async (_, args) => {
   const { first, last, before, after, orderBy, orderDirection } = args;
 
   const baseQuery = knex('cats');
 
-  const result = await paginate(baseQuery, {
+  const result = await knexPaginator(baseQuery, {
     first,
     last,
     before,
@@ -53,120 +58,353 @@ export default async (_, args) => {
     orderBy,
     orderDirection,
   });
-  /* result will contain:
-   * edges
-   * totalCount
-   * pageInfo { hasPreviousPage, hasNextPage, }
-   */
+
   return result;
 };
 ```
 
-#### Formatting Column Names
+### GraphQL Schema Example
 
-If you are using something like [Objection](https://vincit.github.io/objection.js/) and have
-mapped the column names to something like snakeCase instead of camel_case, you'll want to use
-the `formatColumnFn` option to make sure you're ordering by and building cursors from the correct
-column name:
+```graphql
+type Cat {
+  id: ID!
+  name: String!
+  age: Int!
+}
 
-```javascript
-const result = await paginate(
+type CatEdge {
+  cursor: String!
+  node: Cat!
+}
+
+type CatConnection {
+  edges: [CatEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type Query {
+  cats(
+    first: Int
+    last: Int
+    before: String
+    after: String
+    orderBy: String
+    orderDirection: String
+  ): CatConnection!
+}
+```
+
+## Usage
+
+### Using the Knex.js Connector
+
+The `knexPaginator` function is the main entry point for Knex.js integration:
+
+```typescript
+import { knexPaginator } from 'apollo-cursor-pagination-ts';
+
+const result = await knexPaginator(
+  baseQuery, // Knex query builder
+  paginationArgs, // GraphQL pagination arguments
+  options // Optional configuration
+);
+```
+
+#### Parameters
+
+1. **`baseQuery`**: A Knex.js query builder instance
+2. **`paginationArgs`**: GraphQL pagination arguments:
+   - `first`: Number of items to fetch (forward pagination)
+   - `last`: Number of items to fetch (backward pagination)
+   - `before`: Cursor for backward pagination
+   - `after`: Cursor for forward pagination
+   - `orderBy`: Column(s) to order by
+   - `orderDirection`: 'asc' or 'desc' (or array for multiple columns)
+3. **`options`**: Optional configuration object
+
+#### Return Value
+
+The function returns a `ConnectionResult` object:
+
+```typescript
+interface ConnectionResult<T> {
+  pageInfo: {
+    hasPreviousPage: boolean;
+    hasNextPage: boolean;
+    startCursor?: string;
+    endCursor?: string;
+  };
+  totalCount?: number;
+  edges: Array<{
+    cursor: string;
+    node: T;
+  }>;
+}
+```
+
+### Advanced Configuration
+
+#### Column Name Formatting
+
+If you're using an ORM like Objection.js that maps column names, you can use the `formatColumnFn` option:
+
+```typescript
+const result = await knexPaginator(
   baseQuery,
   { first, last, before, after, orderBy, orderDirection },
   {
     formatColumnFn: (column) => {
-      // Logic to transform your column name goes here...
-      return column;
+      // Transform camelCase to snake_case
+      return column.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
     },
   }
 );
 ```
 
-**Important note:** Make sure you pass the un-formatted version as your `orderBy` argument. It helps
-to create a wrapper around the `paginate()` function that enforces this. For example, if the formatted
-database column name is "created_at" and the column name on the model is "createdAt," you would pass
-"createdAt" as the `orderBy` argument.
+#### Custom Edge Modification
 
-<details>
-  <summary>An example with Objection columnNameMappers</summary>
+Add custom metadata to each edge:
 
-```javascript
-const result = await paginate(
-  baseQuery,
-  { first, last, before, after, orderBy, orderDirection },
-  {
-    formatColumnFn: (column) => {
-      if (Model.columnNameMappers && Model.columnNameMappers.format) {
-        const result = Model.columnNameMappers.format({ [column]: true });
-        return Object.keys(result)[0];
-      } else {
-        return column;
-      }
-    },
-  }
-);
-```
-
-</details>
-
-#### Customizing Edges
-
-If you have additional metadata you would like to pass along with each edge, as is allowed by the Relay
-specification, you may do so using the `modifyEdgeFn` option:
-
-```javascript
-const result = await paginate(
+```typescript
+const result = await knexPaginator(
   baseQuery,
   { first, last, before, after, orderBy, orderDirection },
   {
     modifyEdgeFn: (edge) => ({
       ...edge,
-      custom: 'foo',
+      customField: 'custom value',
+      timestamp: new Date().toISOString(),
     }),
   }
 );
 ```
 
-### Creating your own connector
+#### Skip Total Count
 
-Only Knex.js is implemented for now. If you want to connect to a different ORM, you must make your own connector.
+For performance optimization, you can skip the total count calculation:
 
-To create your own connector:
+```typescript
+const result = await knexPaginator(
+  baseQuery,
+  { first, last, before, after, orderBy, orderDirection },
+  {
+    skipTotalCount: true,
+  }
+);
+```
 
-1- Import `apolloCursorPaginationBuilder` from `src/builder/index.js`
+#### Custom Primary Key
 
-2- Call `apolloCursorPaginationBuilder` with the specified params. It will generate a `paginate` function that you can export to use in your resolvers.
+Specify a custom primary key (defaults to 'id'):
 
-You can base off from `src/orm-connectors/knex/custom-pagination.js`.
+```typescript
+const result = await knexPaginator(
+  baseQuery,
+  { first, last, before, after, orderBy, orderDirection },
+  {
+    primaryKey: 'uuid',
+  }
+);
+```
+
+### Multiple Column Ordering
+
+You can order by multiple columns:
+
+```typescript
+const result = await knexPaginator(baseQuery, {
+  first: 10,
+  orderBy: ['createdAt', 'id'],
+  orderDirection: ['desc', 'asc'],
+});
+```
+
+## Creating Custom Connectors
+
+The library is designed to be extensible. You can create connectors for other ORMs by implementing the `OperatorFunctions` interface.
+
+### Required Methods
+
+To create a custom connector, you need to implement these methods:
+
+```typescript
+interface OperatorFunctions<N, NA, C> {
+  // Apply cursor filtering for forward pagination
+  applyAfterCursor: (
+    nodeAccessor: NA,
+    cursor: string,
+    opts: OrderArgs<C>
+  ) => NA;
+
+  // Apply cursor filtering for backward pagination
+  applyBeforeCursor: (
+    nodeAccessor: NA,
+    cursor: string,
+    opts: OrderArgs<C>
+  ) => NA;
+
+  // Apply ordering to the query
+  applyOrderBy: (nodeAccessor: NA, opts: OrderArgs<C>) => NA;
+
+  // Return first N nodes for forward pagination
+  returnNodesForFirst: (
+    nodeAccessor: NA,
+    count: number,
+    opts: OrderArgs<C>
+  ) => Promise<N[]>;
+
+  // Return last N nodes for backward pagination
+  returnNodesForLast: (
+    nodeAccessor: NA,
+    count: number,
+    opts: OrderArgs<C>
+  ) => Promise<N[]>;
+
+  // Return total count of nodes
+  returnTotalCount: (nodeAccessor: NA) => Promise<number>;
+
+  // Convert nodes to edges with cursors
+  convertNodesToEdges: (
+    nodes: N[],
+    params: GraphQLParams | undefined,
+    opts: OrderArgs<C>
+  ) => { cursor: string; node: N }[];
+}
+```
+
+### Example: Custom Connector
+
+```typescript
+import apolloCursorPaginationBuilder from 'apollo-cursor-pagination-ts';
+
+const myCustomConnector = apolloCursorPaginationBuilder({
+  applyAfterCursor: (query, cursor, opts) => {
+    // Implement cursor filtering logic
+    return query;
+  },
+
+  applyBeforeCursor: (query, cursor, opts) => {
+    // Implement cursor filtering logic
+    return query;
+  },
+
+  applyOrderBy: (query, opts) => {
+    // Implement ordering logic
+    return query;
+  },
+
+  returnNodesForFirst: async (query, count, opts) => {
+    // Return first N nodes
+    return [];
+  },
+
+  returnNodesForLast: async (query, count, opts) => {
+    // Return last N nodes
+    return [];
+  },
+
+  returnTotalCount: async (query) => {
+    // Calculate total count
+    return 0;
+  },
+
+  convertNodesToEdges: (nodes, params, opts) => {
+    // Convert nodes to edges with cursors
+    return nodes.map((node) => ({
+      cursor: 'encoded-cursor',
+      node,
+    }));
+  },
+});
+
+export default myCustomConnector;
+```
+
+## Relay Connection Specification
+
+This library implements the complete [Relay Connection specification](https://relay.dev/graphql/connections.htm). Key features include:
+
+### Connection Types
+
+- Must have `edges` and `pageInfo` fields
+- `edges` returns a list of edge types
+- `pageInfo` returns a non-null `PageInfo` object
+
+### Edge Types
+
+- Must have `node` and `cursor` fields
+- `node` contains the actual data
+- `cursor` is an opaque string for pagination
+
+### Pagination Arguments
+
+- **Forward pagination**: `first` and `after`
+- **Backward pagination**: `last` and `before`
+- Consistent ordering across both directions
+
+### PageInfo
+
+- `hasNextPage`: Boolean indicating if more edges exist
+- `hasPreviousPage`: Boolean indicating if previous edges exist
+- `startCursor`: Cursor of the first edge
+- `endCursor`: Cursor of the last edge
+
+## Testing
+
+Run the test suite:
+
+```bash
+npm test
+```
+
+Run tests in watch mode:
+
+```bash
+npm run test:watch
+```
 
 ## Contributing
 
-Pull requests are welcome, specially to implement new connectors for different ORMs / Query builders.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Ensure all tests pass
+6. Submit a pull request
 
-When submitting a pull request, please include tests for the code you are submitting, and check that you did not break any working test.
+### Development Setup
 
-### Testing and publishing changes
+```bash
+# Install dependencies
+npm install
 
-1- Code your changes
+# Build the project
+npm run build
 
-2- Run `yarn build`. This will generate a `dist` folder with the distributable files
+# Run type checking
+npm run typecheck
 
-3- `cd` into the test app and run `yarn install` and then `yarn test`. Check that all tests pass.
+# Run linting
+npm run lint
 
-4- Send the PR. When accepted, the maintainer will publish a new version to npm using the new `dist` folder.
+# Format code
+npm run format
+```
 
-#### Note to maintainer
+## License
 
-Do not publish using yarn, as it doesn't publishes all dependencies. Use `npm publish`.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-### Running the test suite
+## Acknowledgments
 
-1- `npm link`
-
-2- `cd tests/test-app`
-
-3- `npm link @pocket-tools/apollo-cursor-pagination`
-
-2- `npm install`
-
-3- `npm test`
+- Original implementation by [Pocket](https://github.com/Pocket/apollo-cursor-pagination)
+- [Relay](https://relay.dev/) team for the Connection specification
+- [Apollo GraphQL](https://www.apollographql.com/) for the excellent GraphQL server framework
