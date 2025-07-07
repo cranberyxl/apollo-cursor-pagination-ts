@@ -27,7 +27,7 @@ describe('apolloCursorPaginationBuilder', () => {
       const cursorId = parseInt(cursor.split(':')[1], 10);
       return nodes.filter((node) => node.id < cursorId);
     },
-    calculateTotalCount: async (nodes: Node[]) => nodes.length,
+    returnTotalCount: async (nodes: Node[]) => nodes.length,
     returnNodesForFirst: async (nodes: Node[], first: number) =>
       nodes.slice(0, first),
     returnNodesForLast: async (nodes: Node[], last: number) =>

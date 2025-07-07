@@ -30,6 +30,7 @@ export const decode = (str: string): string =>
   Buffer.from(str, 'base64').toString();
 
 export interface OperatorFunctions<N, NA, C> {
+  // apply* methods alter the nodeAccessor
   applyAfterCursor: (
     nodeAccessor: NA,
     cursor: string,
@@ -41,6 +42,7 @@ export interface OperatorFunctions<N, NA, C> {
     opts: OrderArgs<C>
   ) => NA;
   applyOrderBy: (nodeAccessor: NA, opts: OrderArgs<C>) => NA;
+  // return* methods talk to the datasource
   returnNodesForFirst: (
     nodeAccessor: NA,
     count: number,
@@ -51,7 +53,9 @@ export interface OperatorFunctions<N, NA, C> {
     count: number,
     opts: OrderArgs<C>
   ) => Promise<N[]>;
-  calculateTotalCount: (nodeAccessor: NA) => Promise<number>;
+  // returnTotalCount ignores the nodeAccessor and returns the total count of the nodes
+  // Can be skipped if you don't want to calculate the total count
+  returnTotalCount: (nodeAccessor: NA) => Promise<number>;
   convertNodesToEdges: (
     nodes: N[],
     params: GraphQLParams | undefined,
@@ -177,7 +181,7 @@ const apolloCursorPaginationBuilder =
   <N, NA, C>({
     applyAfterCursor,
     applyBeforeCursor,
-    calculateTotalCount,
+    returnTotalCount,
     returnNodesForFirst,
     returnNodesForLast,
     convertNodesToEdges,
@@ -232,7 +236,7 @@ const apolloCursorPaginationBuilder =
     );
 
     const totalCount = !skipTotalCount
-      ? await calculateTotalCount(allNodesAccessor)
+      ? await returnTotalCount(allNodesAccessor)
       : undefined;
 
     let edges = convertNodesToEdges(

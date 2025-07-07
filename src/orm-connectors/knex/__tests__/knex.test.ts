@@ -7,7 +7,7 @@ import paginate, {
   getDataFromCursor,
   applyOrderBy,
   convertNodesToEdges,
-  calculateTotalCount,
+  returnTotalCount,
   formatColumnIfAvailable,
   applyAfterCursor,
   applyBeforeCursor,
@@ -122,15 +122,15 @@ describe('Knex Custom Pagination with SQLite', () => {
     await db.schema.dropTable('test_table');
   });
 
-  describe('calculateTotalCount', () => {
+  describe('returnTotalCount', () => {
     it('returns the number of nodes in a query', async () => {
       await db('test_table').insert(factory.build());
-      const result = await calculateTotalCount(db('test_table'));
+      const result = await returnTotalCount(db('test_table'));
       expect(result).toBe(1);
     });
     it('returns the number of nodes a query with a select', async () => {
       await db('test_table').insert(factory.build());
-      const result = await calculateTotalCount(db('test_table').select('age'));
+      const result = await returnTotalCount(db('test_table').select('age'));
       expect(result).toBe(1);
     });
   });

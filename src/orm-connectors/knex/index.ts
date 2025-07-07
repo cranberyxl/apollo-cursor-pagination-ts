@@ -339,16 +339,14 @@ export const returnNodesForLast = <
   return result;
 };
 
-export const calculateTotalCount = async <
+export const returnTotalCount = async <
   TResult extends {},
   TRecord extends {} = TResult,
 >(
   nodesAccessor: Parameters<
-    KnexOperatorFunctions<TResult, TRecord>['calculateTotalCount']
+    KnexOperatorFunctions<TResult, TRecord>['returnTotalCount']
   >[0]
-): ReturnType<
-  KnexOperatorFunctions<TResult, TRecord>['calculateTotalCount']
-> => {
+): ReturnType<KnexOperatorFunctions<TResult, TRecord>['returnTotalCount']> => {
   const counts = await nodesAccessor.clone().clearSelect().count('*');
   const result = counts.reduce((prev: number, curr: any) => {
     const currCount = curr.count || curr['count(*)'];
@@ -446,7 +444,7 @@ export default function paginate<
       cursor: string,
       opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Knex.QueryBuilder<TResult, TRecord>,
-    calculateTotalCount: calculateTotalCount as unknown as (
+    returnTotalCount: returnTotalCount as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>
     ) => Promise<number>,
     returnNodesForFirst: returnNodesForFirst as unknown as (
