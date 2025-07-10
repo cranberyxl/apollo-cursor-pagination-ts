@@ -46,6 +46,64 @@ const tableConfig = (TableName: string): CreateTableCommandInput => ({
       AttributeName: 'sk',
       AttributeType: 'S',
     },
+    {
+      AttributeName: 'pk2',
+      AttributeType: 'S',
+    },
+    {
+      AttributeName: 'sk2',
+      AttributeType: 'S',
+    },
+  ],
+  GlobalSecondaryIndexes: [
+    {
+      IndexName: 'inverse',
+      KeySchema: [
+        {
+          KeyType: 'HASH',
+          AttributeName: 'sk',
+        },
+        {
+          KeyType: 'RANGE',
+          AttributeName: 'pk',
+        },
+      ],
+      Projection: {
+        ProjectionType: 'ALL',
+      },
+    },
+    {
+      IndexName: 'gsi2',
+      KeySchema: [
+        {
+          KeyType: 'HASH',
+          AttributeName: 'pk2',
+        },
+        {
+          KeyType: 'RANGE',
+          AttributeName: 'sk2',
+        },
+      ],
+      Projection: {
+        ProjectionType: 'ALL',
+      },
+    },
+    {
+      IndexName: 'inverse2',
+      KeySchema: [
+        {
+          KeyType: 'HASH',
+          AttributeName: 'sk2',
+        },
+        {
+          KeyType: 'RANGE',
+          AttributeName: 'pk2',
+        },
+      ],
+      Projection: {
+        ProjectionType: 'ALL',
+      },
+    },
   ],
   BillingMode: 'PAY_PER_REQUEST',
 });

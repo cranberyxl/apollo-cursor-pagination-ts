@@ -10,6 +10,7 @@ This library was originally forked from [Pocket/apollo-cursor-pagination](https:
 - ✅ **TypeScript Support**: Full TypeScript support with comprehensive type definitions
 - ✅ **Multiple ORM Support**: Currently supports Knex.js and DynamoDB Toolbox with extensible architecture for other ORMs
 - ✅ **Primary Key Support**: Enhanced cursor generation with primary key support
+- ✅ **Secondary Index Support**: Full support for DynamoDB GSIs and LSIs with custom cursor generation
 - ✅ **Flexible Ordering**: Support for single and multiple column ordering
 - ✅ **Custom Edge Modification**: Ability to add custom metadata to edges
 - ✅ **Column Name Formatting**: Support for custom column name transformations
@@ -79,7 +80,7 @@ import {
   prefix,
   map,
 } from 'dynamodb-toolbox';
-import { AccessPattern } from 'dynamodb-toolbox/entity/actions/accessPattern';
+import { PagerEntityAccessPattern } from 'apollo-cursor-pagination-ts';
 
 // Define your entity using v2 syntax
 const UserEntity = new Entity({
@@ -91,13 +92,13 @@ const UserEntity = new Entity({
     age: number(),
     category: string(),
   }),
-  table: YoutTable,
+  table: YourTable,
 });
 
 const userRepo = UserEntity.build(EntityRepository);
 
-// Create an access pattern using the new v2 AccessPattern syntax
-const usersByCategory = UserEntity.build(AccessPattern)
+// Create an access pattern using PagerEntityAccessPattern (required for pagination)
+const usersByCategory = UserEntity.build(PagerEntityAccessPattern)
   .schema(map({ category: string() }))
   .pattern(({ category }) => ({ partition: `CATEGORY#${category}` }))
   .meta({
@@ -301,13 +302,63 @@ const result = await dynamodbPaginator(
 #### DynamoDB Parameters
 
 1. **`queryInput`**: The input parameters for your DynamoDB query (e.g., `{ category: 'premium' }`)
-2. **`accessPattern`**: A DynamoDB Toolbox access pattern that defines how to query your data
+2. **`accessPattern`**: A `PagerEntityAccessPattern` that defines how to query your data (must use `PagerEntityAccessPattern`, not the standard `AccessPattern`)
 3. **`paginationArgs`**: GraphQL pagination arguments (same as Knex.js)
-4. **`options`**: Optional configuration object
+4. **`options`**: Optional configuration object including `formatPrimaryKeyFn` for custom cursor generation
 
 #### DynamoDB Access Patterns
 
-Access patterns are the key concept in DynamoDB Toolbox. They define how to query your data based on your table's design. Using the new v2 AccessPattern syntax:
+Access patterns are the key concept in DynamoDB Toolbox. They define how to query your data based on your table's design. **Important**: For pagination to work correctly, you must use `PagerEntityAccessPattern` instead of the standard `AccessPattern` from DynamoDB Toolbox.
+
+```typescript
+import { PagerEntityAccessPattern } from 'apollo-cursor-pagination-ts/orm-connectors/dynamodb-toolbox';
+import { map, string, number } from 'dynamodb-toolbox';
+
+// Simple access pattern by partition key
+const usersByCategory = UserEntity.build(PagerEntityAccessPattern)
+  .schema(map({ category: string() }))
+  .pattern(({ category }) => ({ partition: `CATEGORY#${category}` }))
+  .meta({
+    title: 'Users by Category',
+    description: 'Query users filtered by category',
+  });
+
+// Access pattern with sort key
+const usersByCategoryAndDate = UserEntity.build(PagerEntityAccessPattern)
+  .schema(map({ category: string(), date: string() }))
+  .pattern(({ category, date }) => ({
+    partition: `CATEGORY#${category}`,
+    range: { eq: `DATE#${date}` },
+  }))
+  .meta({
+    title: 'Users by Category and Date',
+    description: 'Query users by category and specific date',
+  });
+
+// Access pattern with GSI
+const usersByEmail = UserEntity.build(PagerEntityAccessPattern)
+  .schema(map({ email: string() }))
+  .pattern(({ email }) => ({
+    index: 'email-index',
+    partition: `EMAIL#${email}`,
+  }))
+  .meta({
+    title: 'Users by Email',
+    description: 'Query users by email using GSI',
+  });
+
+// Access pattern with range conditions
+const usersByAgeRange = UserEntity.build(PagerEntityAccessPattern)
+  .schema(map({ category: string(), minAge: number(), maxAge: number() }))
+  .pattern(({ category, minAge, maxAge }) => ({
+    partition: `CATEGORY#${category}`,
+    range: { gte: minAge, lte: maxAge },
+  }))
+  .meta({
+    title: 'Users by Age Range',
+    description: 'Query users in a specific age range',
+  });
+```
 
 ```typescript
 import { AccessPattern } from 'dynamodb-toolbox/entity/actions/accessPattern';
@@ -381,6 +432,101 @@ const result = await dynamodbPaginator(
 
 **Note**: DynamoDB ordering is based on the sort key of your table or GSI. The `orderDirection` parameter controls whether the query uses `reverse: true` or not.
 
+#### Secondary Indexes (GSI/LSI)
+
+DynamoDB pagination works seamlessly with both Global Secondary Indexes (GSI) and Local Secondary Indexes (LSI). When using secondary indexes, you need to specify the `index` property in your access pattern:
+
+```typescript
+// GSI access pattern
+const usersByEmail = UserEntity.build(PagerEntityAccessPattern)
+  .schema(map({ email: string() }))
+  .pattern(({ email }) => ({
+    index: 'email-index', // Specify the GSI name
+    partition: `EMAIL#${email}`,
+  }));
+
+// LSI access pattern
+const usersByCategoryAndDate = UserEntity.build(PagerEntityAccessPattern)
+  .schema(map({ category: string(), date: string() }))
+  .pattern(({ category, date }) => ({
+    index: 'category-date-index', // Specify the LSI name
+    partition: `CATEGORY#${category}`,
+    range: { eq: `DATE#${date}` },
+  }));
+```
+
+**Important**: When using secondary indexes, you may need to use the `formatPrimaryKeyFn` option to ensure proper cursor generation. This is especially important when:
+
+1. **Using GSIs**: The cursor needs to include both the primary table keys and the GSI keys
+2. **Complex key structures**: When your table has multiple key attributes that need to be included in the cursor
+
+```typescript
+// Example with formatPrimaryKeyFn for GSI pagination
+const result = await dynamodbPaginator(
+  { category: 'premium' },
+  usersByCategory,
+  { first: 10 },
+  {
+    formatPrimaryKeyFn: (node) => ({
+      // Include primary table keys
+      pk: `USER#${node.id}`,
+      sk: `EMAIL#${node.email}`,
+      // Include GSI keys
+      pk2: `CATEGORY#${node.category}`,
+      sk2: `DATE#${node.createdAt}`,
+    }),
+  }
+);
+```
+
+#### The `formatPrimaryKeyFn` Parameter
+
+The `formatPrimaryKeyFn` is a function that allows you to customize how the primary key is extracted from each node for cursor generation. This is particularly useful for:
+
+- **Secondary Index Queries**: When querying GSIs or LSIs, you may need to include both the primary table keys and the index keys in the cursor
+- **Complex Key Structures**: When your DynamoDB table has multiple key attributes that need to be preserved for pagination
+- **Custom Key Formatting**: When you need to transform or combine multiple attributes into the cursor
+
+```typescript
+// Basic usage
+const result = await dynamodbPaginator(
+  { category: 'premium' },
+  usersByCategory,
+  { first: 10 },
+  {
+    formatPrimaryKeyFn: (node) => ({
+      pk: `USER#${node.id}`,
+      sk: `EMAIL#${node.email}`,
+    }),
+  }
+);
+
+// Advanced usage with GSI
+const result = await dynamodbPaginator(
+  { category: 'premium' },
+  usersByCategory,
+  { first: 10 },
+  {
+    formatPrimaryKeyFn: (node) => ({
+      // Primary table keys
+      pk: `USER#${node.id}`,
+      sk: `EMAIL#${node.email}`,
+      // GSI keys (if using GSI)
+      pk2: `CATEGORY#${node.category}`,
+      sk2: `AGE#${node.age}`,
+    }),
+  }
+);
+```
+
+**When to use `formatPrimaryKeyFn`**:
+
+1. **GSI Queries**: Always use this when querying GSIs to ensure the cursor includes all necessary key information
+2. **Complex Tables**: When your table has multiple key attributes that need to be preserved
+3. **Custom Cursor Logic**: When you need custom logic for cursor generation
+
+**Note**: If you don't provide `formatPrimaryKeyFn`, the paginator will automatically extract the primary key from the node using DynamoDB Toolbox's entity parser. This works fine for simple primary table queries but may not be sufficient for GSI queries.
+
 #### DynamoDB-Specific Considerations
 
 **Cursor Generation**: DynamoDB cursors are based on the primary key (partition key + sort key) of your items. The cursor contains the encoded primary key information needed for pagination.
@@ -393,7 +539,7 @@ const result = await dynamodbPaginator(
 
 **Performance**: DynamoDB pagination is very efficient as it uses the `ExclusiveStartKey` parameter, which provides O(1) performance for pagination operations.
 
-**Example Table Design**:
+**Example Table Design with Secondary Indexes**:
 
 ```typescript
 // Example table structure for user posts using v2 syntax
@@ -411,10 +557,15 @@ const PostEntity = new Entity({
     content: string(),
     createdAt: string(),
     category: string(),
+    status: string(),
 
-    // GSI for category-based queries
+    // GSI1 for category-based queries
     gsi1pk: string().savedAs('gsi1pk').transform(prefix('CATEGORY')),
     gsi1sk: string().savedAs('gsi1sk').transform(prefix('POST')),
+
+    // GSI2 for status-based queries
+    gsi2pk: string().savedAs('gsi2pk').transform(prefix('STATUS')),
+    gsi2sk: string().savedAs('gsi2sk').transform(prefix('DATE')),
   }),
   table: YourTable,
   indexes: {
@@ -422,8 +573,48 @@ const PostEntity = new Entity({
       partitionKey: 'gsi1pk',
       sortKey: 'gsi1sk',
     },
+    gsi2: {
+      partitionKey: 'gsi2pk',
+      sortKey: 'gsi2sk',
+    },
   },
 });
+
+// Access patterns for different query patterns
+const postsByUser = PostEntity.build(PagerEntityAccessPattern)
+  .schema(map({ userId: string() }))
+  .pattern(({ userId }) => ({ partition: `USER#${userId}` }));
+
+const postsByCategory = PostEntity.build(PagerEntityAccessPattern)
+  .schema(map({ category: string() }))
+  .pattern(({ category }) => ({
+    index: 'gsi1',
+    partition: `CATEGORY#${category}`,
+  }));
+
+const postsByStatus = PostEntity.build(PagerEntityAccessPattern)
+  .schema(map({ status: string() }))
+  .pattern(({ status }) => ({
+    index: 'gsi2',
+    partition: `STATUS#${status}`,
+  }));
+
+// Usage with formatPrimaryKeyFn for GSI queries
+const result = await dynamodbPaginator(
+  { category: 'technology' },
+  postsByCategory,
+  { first: 10 },
+  {
+    formatPrimaryKeyFn: (node) => ({
+      // Primary table keys
+      pk: `USER#${node.userId}`,
+      sk: `POST#${node.postId}`,
+      // GSI1 keys
+      pk2: `CATEGORY#${node.category}`,
+      sk2: `POST#${node.postId}`,
+    }),
+  }
+);
 ```
 
 ## Creating Custom Connectors

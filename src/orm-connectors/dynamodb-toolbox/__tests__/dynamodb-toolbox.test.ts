@@ -15,6 +15,7 @@ import { Factory } from 'rosie';
 import paginate, { cursorGenerator, getDataFromCursor } from '..';
 import { encode, decode } from '../../../builder';
 import { createTable, deleteTable, table } from '../../../testUtil/ddb';
+import { PagerEntityAccessPattern } from '../PagerEntityAccessPattern';
 
 const TestEntity = new Entity({
   name: 'TestEntity',
@@ -22,7 +23,8 @@ const TestEntity = new Entity({
     test: string().savedAs('sk').transform(prefix('TEST')).key(),
     name: string().savedAs('pk').transform(prefix('NAME')).key(),
     age: number(),
-    category: string(),
+    category: string().savedAs('pk2').transform(prefix('CATEGORY')),
+    color: string().savedAs('sk2').transform(prefix('COLOR')),
   }),
   table,
   timestamps: {
@@ -36,6 +38,27 @@ const TestEntity = new Entity({
   entityAttribute: { hidden: false },
 });
 
+const testAccessPattern = TestEntity.build(PagerEntityAccessPattern)
+  .schema(
+    map({
+      name: string(),
+    })
+  )
+  .pattern(({ name }) => ({
+    partition: `NAME#${name}`,
+  }));
+
+const gsi2AccessPattern = TestEntity.build(PagerEntityAccessPattern)
+  .schema(
+    map({
+      category: string(),
+    })
+  )
+  .pattern(({ category }) => ({
+    index: 'gsi2',
+    partition: `CATEGORY#${category}`,
+  }));
+
 const testRepo = TestEntity.build(EntityRepository);
 
 const factory = Factory.define<FormattedItem<typeof TestEntity>>(
@@ -45,19 +68,37 @@ const factory = Factory.define<FormattedItem<typeof TestEntity>>(
   name: faker.person.firstName,
   age: faker.number.int,
   test: faker.string.uuid,
+  color: faker.lorem.word,
 });
 
 describe('DynamoDB Toolbox Pagination', () => {
   let testEntities: FormattedItem<typeof TestEntity>[];
   let reversedTestEntities: FormattedItem<typeof TestEntity>[];
+  let gsi2TestEntities: FormattedItem<typeof TestEntity>[];
 
   beforeEach(async () => {
     await createTable();
+
+    // Wait a bit for the table and indexes to be fully active
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 1000);
+    });
+
     testEntities = Array.from({ length: 10 }, (_, i) => i)
-      .map((v) => factory.build({ name: 'bob', test: v.toString() }))
+      .map((v) =>
+        factory.build({
+          name: 'bob',
+          test: v.toString(),
+          category: 'premium',
+        })
+      )
       .sort((a, b) => a.test.localeCompare(b.test));
 
     reversedTestEntities = [...testEntities].reverse();
+
+    gsi2TestEntities = [...testEntities].sort((a, b) =>
+      a.color.localeCompare(b.color)
+    );
 
     await Promise.all(testEntities.map((entity) => testRepo.put(entity)));
   });
@@ -122,14 +163,9 @@ describe('DynamoDB Toolbox Pagination', () => {
 
   describe('Basic Pagination', () => {
     it('should return first N items when first is specified', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 5 },
         { primaryKey: 'name' }
       );
@@ -158,14 +194,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       );
     });
     it('should return first N items when first is specified and query is reversed', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({
-          partition: `NAME#${name}`,
-        })
-      );
-
-      const result = await paginate({ name: 'bob' }, ap, {
+      const result = await paginate({ name: 'bob' }, testAccessPattern, {
         first: 5,
         orderDirection: 'desc',
       });
@@ -195,14 +224,9 @@ describe('DynamoDB Toolbox Pagination', () => {
     });
 
     it('should return last N items when last is specified', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { last: 5 },
         { primaryKey: 'name' }
       );
@@ -231,14 +255,9 @@ describe('DynamoDB Toolbox Pagination', () => {
       );
     });
     it('should return last N items when last is specified when order is reversed', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { last: 5, orderDirection: 'desc' },
         { primaryKey: 'name' }
       );
@@ -268,14 +287,9 @@ describe('DynamoDB Toolbox Pagination', () => {
     });
 
     it('should handle empty results', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'nonexistent' },
-        ap,
+        testAccessPattern,
         { first: 10 },
         { primaryKey: 'name' }
       );
@@ -289,13 +303,10 @@ describe('DynamoDB Toolbox Pagination', () => {
 
   describe('Cursor-based Pagination', () => {
     it('should handle after cursor correctly', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       // Get first page
-      const firstResult = await paginate({ name: 'bob' }, ap, { first: 3 });
+      const firstResult = await paginate({ name: 'bob' }, testAccessPattern, {
+        first: 3,
+      });
 
       expect(firstResult.edges).toHaveLength(3);
       const afterCursor = firstResult.pageInfo.endCursor;
@@ -303,7 +314,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       // Get second page using after cursor
       const secondResult = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 3, after: afterCursor },
         { primaryKey: 'name' }
       );
@@ -356,15 +367,10 @@ describe('DynamoDB Toolbox Pagination', () => {
     });
 
     it('should handle before cursor correctly', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       // Get first page
       const firstResult = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 5 },
         { primaryKey: 'name' }
       );
@@ -372,7 +378,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       // Get second page
       const secondResult = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 5, after: firstResult.pageInfo.endCursor },
         { primaryKey: 'name' }
       );
@@ -380,7 +386,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       // Go back to first page using before cursor
       const backToFirstResult = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { last: 5, before: secondResult.pageInfo.startCursor },
         { primaryKey: 'name' }
       );
@@ -393,14 +399,9 @@ describe('DynamoDB Toolbox Pagination', () => {
 
   describe('Ordering', () => {
     it('should order by createdAt in ascending order', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         {
           first: 10,
           orderBy: 'createdAt',
@@ -422,14 +423,9 @@ describe('DynamoDB Toolbox Pagination', () => {
     });
 
     it('should order by age in descending order', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         {
           first: 10,
           orderBy: 'test',
@@ -451,37 +447,32 @@ describe('DynamoDB Toolbox Pagination', () => {
 
   describe('Edge Cases', () => {
     it('should handle negative first parameter', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       await expect(
-        paginate({ name: 'bob' }, ap, { first: -1 }, { primaryKey: 'name' })
+        paginate(
+          { name: 'bob' },
+          testAccessPattern,
+          { first: -1 },
+          { primaryKey: 'name' }
+        )
       ).rejects.toThrow('`first` argument must not be less than 0');
     });
 
     it('should handle negative last parameter', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       await expect(
-        paginate({ name: 'bob' }, ap, { last: -1 }, { primaryKey: 'name' })
+        paginate(
+          { name: 'bob' },
+          testAccessPattern,
+          { last: -1 },
+          { primaryKey: 'name' }
+        )
       ).rejects.toThrow('`last` argument must not be less than 0');
     });
 
     it('should handle invalid cursor', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       await expect(
         paginate(
           { name: 'bob' },
-          ap,
+          testAccessPattern,
           { first: 5, after: 'invalid-cursor' },
           { primaryKey: 'name' }
         )
@@ -489,15 +480,10 @@ describe('DynamoDB Toolbox Pagination', () => {
     });
 
     it('should handle both first and last parameters', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       // This should prioritize 'first' over 'last'
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 3, last: 5 },
         { primaryKey: 'name' }
       );
@@ -509,14 +495,9 @@ describe('DynamoDB Toolbox Pagination', () => {
 
   describe('Total Count', () => {
     it('should return total count when not skipped', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 5 },
         { primaryKey: 'name' }
       );
@@ -526,14 +507,9 @@ describe('DynamoDB Toolbox Pagination', () => {
     });
 
     it('should skip total count when specified', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         { first: 5 },
         {
           primaryKey: 'name',
@@ -547,14 +523,9 @@ describe('DynamoDB Toolbox Pagination', () => {
 
   describe('Real DynamoDB Table Structure', () => {
     it('should work with the provided table structure', async () => {
-      const ap = testRepo.accessPattern(
-        map({ name: string() }),
-        ({ name }) => ({ partition: `NAME#${name}` })
-      );
-
       const result = await paginate(
         { name: 'bob' },
-        ap,
+        testAccessPattern,
         {
           first: 5,
           orderBy: 'createdAt',
@@ -577,6 +548,247 @@ describe('DynamoDB Toolbox Pagination', () => {
       // The cursor should contain the primary key values
       expect(decodedCursor).toHaveProperty('pk');
       expect(decodedCursor).toHaveProperty('sk');
+    });
+  });
+
+  describe('GSI2 Pagination', () => {
+    it('should paginate using GSI2 partition key', async () => {
+      const result = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 5 },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(result.totalCount).toBe(10);
+      expect(result.pageInfo).toMatchObject({
+        hasNextPage: true,
+        hasPreviousPage: false,
+        startCursor: result.edges[0].cursor,
+        endCursor: result.edges[4].cursor,
+      });
+
+      expect(result.edges).toEqual(
+        gsi2TestEntities.slice(0, 5).map((entity) => ({
+          cursor: cursorGenerator({
+            pk: `NAME#${entity.name}`,
+            sk: `TEST#${entity.test}`,
+            pk2: `CATEGORY#${entity.category}`,
+            sk2: `COLOR#${entity.color}`,
+          }),
+          node: {
+            ...entity,
+            entity: 'TestEntity',
+            createdAt: expect.any(String),
+            updatedAt: expect.any(String),
+          },
+        }))
+      );
+    });
+
+    it('should handle GSI2 pagination with after cursor', async () => {
+      // Get first page
+      const firstResult = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 3 },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(firstResult.edges).toHaveLength(3);
+      const afterCursor = firstResult.pageInfo.endCursor;
+
+      // Get second page using after cursor
+      const secondResult = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 3, after: afterCursor },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(secondResult.edges).toHaveLength(3);
+      expect(secondResult.pageInfo.hasPreviousPage).toBe(true);
+      expect(secondResult.pageInfo.hasNextPage).toBe(true);
+
+      // Verify no overlap between pages
+      const firstPageIds = firstResult.edges.map((edge) => edge.node.test);
+      const secondPageIds = secondResult.edges.map((edge) => edge.node.test);
+
+      const intersection = firstPageIds.filter((id) =>
+        secondPageIds.includes(id)
+      );
+      expect(intersection).toHaveLength(0);
+    });
+
+    it('should handle GSI2 pagination with before cursor', async () => {
+      // Get first page
+      const firstResult = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 5 },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      // Get second page
+      const secondResult = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 5, after: firstResult.pageInfo.endCursor },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      // Go back to first page using before cursor
+      const backToFirstResult = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { last: 5, before: secondResult.pageInfo.startCursor },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(backToFirstResult.edges).toHaveLength(5);
+      expect(backToFirstResult.pageInfo.hasNextPage).toBe(true);
+      expect(backToFirstResult.totalCount).toBe(10);
+
+      // Verify we got back to the first page
+      const originalIds = firstResult.edges
+        .map((edge) => edge.node.test)
+        .sort();
+      const backToFirstIds = backToFirstResult.edges
+        .map((edge) => edge.node.test)
+        .sort();
+      expect(backToFirstIds).toEqual(originalIds);
+    });
+
+    it('should handle GSI2 pagination with descending order', async () => {
+      const result = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 10, orderDirection: 'desc' },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(result.edges).toHaveLength(10);
+      expect(result.totalCount).toBe(10);
+
+      // Verify items are ordered by color descending (since sk2 is COLOR#)
+      const colors = result.edges.map((edge) => edge.node.color);
+      for (let i = 1; i < colors.length; i += 1) {
+        expect(colors[i].localeCompare(colors[i - 1])).toBeLessThanOrEqual(0);
+      }
+    });
+
+    it('should handle GSI2 pagination with last parameter', async () => {
+      const result = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { last: 5 },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(result.totalCount).toBe(10);
+      expect(result.pageInfo).toMatchObject({
+        hasNextPage: false,
+        hasPreviousPage: true,
+        startCursor: result.edges[0].cursor,
+        endCursor: result.edges[4].cursor,
+      });
+
+      expect(result.edges).toHaveLength(5);
+    });
+
+    it('should handle empty GSI2 results', async () => {
+      const result = await paginate(
+        { category: 'nonexistent' },
+        gsi2AccessPattern,
+        { first: 10 },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(result.edges).toHaveLength(0);
+      expect(result.pageInfo.hasNextPage).toBe(false);
+      expect(result.pageInfo.hasPreviousPage).toBe(false);
+      expect(result.totalCount).toBe(0);
+    });
+
+    it('should generate correct cursors for GSI2 queries', async () => {
+      const result = await paginate(
+        { category: 'premium' },
+        gsi2AccessPattern,
+        { first: 3 },
+        {
+          formatPrimaryKeyFn: (node) => ({
+            pk2: `CATEGORY#${node.category}`,
+            sk2: `COLOR#${node.color}`,
+          }),
+        }
+      );
+
+      expect(result.edges).toHaveLength(3);
+
+      // Verify cursor structure and content
+      result.edges.forEach((edge) => {
+        const decodedCursor = getDataFromCursor(edge.cursor);
+
+        // Cursor should contain the GSI2 key values
+        expect(decodedCursor).toHaveProperty('pk2');
+        expect(decodedCursor).toHaveProperty('sk2');
+
+        // The pk2 should be the CATEGORY# prefix
+        expect(decodedCursor.pk2).toMatch(/^CATEGORY#/);
+
+        // The sk2 should be the COLOR# prefix
+        expect(decodedCursor.sk2).toMatch(/^COLOR#/);
+      });
+
+      // Verify cursor uniqueness
+      const cursors = result.edges.map((edge) => edge.cursor);
+      const uniqueCursors = new Set(cursors);
+      expect(uniqueCursors.size).toBe(cursors.length);
     });
   });
 });

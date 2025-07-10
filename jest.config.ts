@@ -10,6 +10,7 @@ const config: Config = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   coverageReporters: ['html-spa'],
   maxWorkers: 1,
+  verbose: true,
 };
 
 export default config;

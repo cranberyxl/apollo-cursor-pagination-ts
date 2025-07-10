@@ -4,7 +4,6 @@ import {
   EntityParser,
   InputValue,
   Schema,
-  EntityAccessPattern,
   PrimaryKey,
 } from 'dynamodb-toolbox';
 import apolloCursorPaginationBuilder, {
@@ -13,37 +12,45 @@ import apolloCursorPaginationBuilder, {
   GraphQLParams,
   BuilderOptions,
 } from '../../builder';
+import { PagerEntityAccessPattern } from './PagerEntityAccessPattern';
 
 export const cursorGenerator = <E extends Entity>(
   key: PrimaryKey<E['table']>
-): string => encode(JSON.stringify(key));
+): string => encode(JSON.stringify(key, Object.keys(key).sort()));
 
 export const getDataFromCursor = (cursor: string) => JSON.parse(decode(cursor));
+
+export { PagerEntityAccessPattern };
 
 export default function paginate<
   ENTITY extends Entity = Entity,
   SCHEMA extends Schema = Schema,
 >(
   queryInput: InputValue<SCHEMA>,
-  accessPattern: EntityAccessPattern<ENTITY, SCHEMA>,
+  accessPattern: PagerEntityAccessPattern<ENTITY, SCHEMA>,
   args?: GraphQLParams,
-  opts?: BuilderOptions
+  builderOptions?: BuilderOptions<
+    undefined,
+    FormattedItem<ENTITY>,
+    Record<string, any>
+  >
 ) {
   return apolloCursorPaginationBuilder<
     FormattedItem<ENTITY>,
-    EntityAccessPattern<ENTITY>,
-    string
+    PagerEntityAccessPattern<ENTITY, SCHEMA>,
+    undefined,
+    Record<string, any>
   >({
-    applyAfterCursor: (nodeAccessor, cursor) => {
-      const decodedCursor = getDataFromCursor(cursor);
+    applyAfterCursor: (nodeAccessor, afterCursor) => {
+      const decodedCursor = getDataFromCursor(afterCursor);
 
       return nodeAccessor.options(
         { exclusiveStartKey: decodedCursor },
         { merge: true }
       );
     },
-    applyBeforeCursor: (nodeAccessor, cursor) => {
-      const decodedCursor = getDataFromCursor(cursor);
+    applyBeforeCursor: (nodeAccessor, beforeCursor) => {
+      const decodedCursor = getDataFromCursor(beforeCursor);
 
       return nodeAccessor.options(
         { exclusiveStartKey: decodedCursor },
@@ -51,7 +58,7 @@ export default function paginate<
       );
     },
     returnNodesForFirst: async (nodeAccessor, count, orderArgs) => {
-      const result = await nodeAccessor
+      const q = nodeAccessor
         .options(
           {
             limit: count,
@@ -59,8 +66,9 @@ export default function paginate<
           },
           { merge: true }
         )
-        .query(queryInput)
-        .send();
+        .query(queryInput);
+
+      const result = await q.send();
 
       const items = (result.Items || []) as FormattedItem<ENTITY>[];
       return items;
@@ -86,11 +94,18 @@ export default function paginate<
         .send();
       return result.Count || 0;
     },
-    convertNodesToEdges: (nodes) =>
+    convertNodesToEdges: (nodes, _, opts) =>
       nodes.map((node) => {
-        const nodePrimaryKey = accessPattern.entity
+        let nodePrimaryKey: Record<string, any> = accessPattern.entity
           .build(EntityParser)
           .parse(node, { mode: 'key' }).key;
+
+        if (opts.formatPrimaryKeyFn) {
+          nodePrimaryKey = {
+            ...nodePrimaryKey,
+            ...opts.formatPrimaryKeyFn(node),
+          };
+        }
 
         return {
           cursor: cursorGenerator(nodePrimaryKey),
@@ -98,5 +113,5 @@ export default function paginate<
         };
       }),
     applyOrderBy: (nodeAccessor) => nodeAccessor,
-  })(accessPattern as any, args, opts);
+  })(accessPattern as any, args, builderOptions ?? {});
 }
