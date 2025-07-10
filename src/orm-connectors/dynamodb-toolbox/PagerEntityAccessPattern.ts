@@ -89,6 +89,10 @@ export class PagerEntityAccessPattern<
     );
   }
 
+  getOptions(): OPTIONS {
+    return this[$options];
+  }
+
   options<NEXT_OPTIONS extends QueryOptions<ENTITY['table'], [ENTITY], QUERY>>(
     nextOptions: NEXT_OPTIONS,
     options?: { merge?: boolean }
