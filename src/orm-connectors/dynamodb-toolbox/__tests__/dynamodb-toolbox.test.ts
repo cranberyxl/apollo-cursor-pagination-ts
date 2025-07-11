@@ -790,4 +790,663 @@ describe('DynamoDB Toolbox Pagination', () => {
       expect(uniqueCursors.size).toBe(cursors.length);
     });
   });
+
+  describe('DynamoDB Range Queries', () => {
+    // Create additional test data with more varied sort keys for range testing
+    let rangeTestEntities: FormattedItem<typeof TestEntity>[];
+
+    beforeEach(async () => {
+      // Create test data with varied sort keys for range testing
+      rangeTestEntities = [
+        factory.build({
+          name: 'alice',
+          test: '001',
+          category: 'basic',
+          color: 'red',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '002',
+          category: 'basic',
+          color: 'blue',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '003',
+          category: 'basic',
+          color: 'green',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '010',
+          category: 'basic',
+          color: 'yellow',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '020',
+          category: 'basic',
+          color: 'purple',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '100',
+          category: 'basic',
+          color: 'orange',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '200',
+          category: 'basic',
+          color: 'pink',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '300',
+          category: 'basic',
+          color: 'brown',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '400',
+          category: 'basic',
+          color: 'gray',
+        }),
+        factory.build({
+          name: 'alice',
+          test: '500',
+          category: 'basic',
+          color: 'black',
+        }),
+      ].sort((a, b) => a.test.localeCompare(b.test));
+
+      await Promise.all(
+        rangeTestEntities.map((entity) => testRepo.put(entity))
+      );
+    });
+
+    describe('Begins With Range Queries', () => {
+      it('returns all test events', async () => {
+        const result = await paginate(
+          { name: 'alice' },
+          TestEntity.build(PagerEntityAccessPattern)
+            .schema(map({ name: string() }))
+            .pattern(({ name }) => ({
+              partition: `NAME#${name}`,
+            })),
+          { first: 10 }
+        );
+
+        expect(result.totalCount).toBe(10);
+
+        result.edges.forEach((edge) => {
+          expect(edge.node.name).toBe('alice');
+        });
+      });
+
+      it('should handle begins_with range query on sort key', async () => {
+        const beginsWithPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              testPrefix: string(),
+            })
+          )
+          .pattern(({ name, testPrefix }) => ({
+            partition: `NAME#${name}`,
+            range: { beginsWith: `TEST#${testPrefix}` },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', testPrefix: '0' },
+          beginsWithPattern,
+          { first: 10 }
+        );
+
+        expect(result.edges).toHaveLength(5); // 001, 002, 003, 010, 020
+        expect(result.totalCount).toBe(5);
+
+        // Verify all results start with '0'
+        result.edges.forEach((edge) => {
+          expect(edge.node.test).toMatch(/^0/);
+        });
+      });
+
+      it('should handle begins_with range query with pagination', async () => {
+        const beginsWithPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              testPrefix: string(),
+            })
+          )
+          .pattern(({ name, testPrefix }) => ({
+            partition: `NAME#${name}`,
+            range: { beginsWith: `TEST#${testPrefix}` },
+          }));
+
+        // Get first page
+        const firstResult = await paginate(
+          { name: 'alice', testPrefix: '0' },
+          beginsWithPattern,
+          { first: 2 },
+          { primaryKey: 'name' }
+        );
+
+        expect(firstResult.edges).toHaveLength(2);
+        expect(firstResult.pageInfo.hasNextPage).toBe(true);
+
+        // Get second page
+        const secondResult = await paginate(
+          { name: 'alice', testPrefix: '0' },
+          beginsWithPattern,
+          { first: 2, after: firstResult.pageInfo.endCursor },
+          { primaryKey: 'name' }
+        );
+
+        expect(secondResult.edges).toHaveLength(2);
+        expect(secondResult.pageInfo.hasNextPage).toBe(true);
+      });
+    });
+
+    describe('Between Range Queries', () => {
+      it('should handle between range query on sort key', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', startTest: '002', endTest: '100' },
+          betweenPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(5); // 002, 003, 010, 020, 100
+        expect(result.totalCount).toBe(5);
+
+        // Verify all results are within the range
+        result.edges.forEach((edge) => {
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeGreaterThanOrEqual(2);
+          expect(testNum).toBeLessThanOrEqual(100);
+        });
+      });
+
+      it('should handle between range query with inclusive bounds', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', startTest: '001', endTest: '500' },
+          betweenPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(10);
+        expect(result.totalCount).toBe(10);
+      });
+    });
+
+    describe('Greater Than Range Queries', () => {
+      it('should handle greater than range query on sort key', async () => {
+        const gtPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              minTest: string(),
+            })
+          )
+          .pattern(({ name, minTest }) => ({
+            partition: `NAME#${name}`,
+            range: { gte: `TEST#${minTest}` },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', minTest: '100' },
+          gtPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(5); // 100, 200, 300, 400, 500
+        expect(result.totalCount).toBe(5);
+
+        // Verify all results are >= 100
+        result.edges.forEach((edge) => {
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeGreaterThanOrEqual(100);
+        });
+      });
+
+      it('should handle greater than (exclusive) range query', async () => {
+        const gtPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              minTest: string(),
+            })
+          )
+          .pattern(({ name, minTest }) => ({
+            partition: `NAME#${name}`,
+            range: { gt: `TEST#${minTest}` },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', minTest: '100' },
+          gtPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(4); // 200, 300, 400, 500 (exclusive)
+        expect(result.totalCount).toBe(4);
+
+        // Verify all results are > 100
+        result.edges.forEach((edge) => {
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeGreaterThan(100);
+        });
+      });
+    });
+
+    describe('Less Than Range Queries', () => {
+      it('should handle less than range query on sort key', async () => {
+        const ltPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              maxTest: string(),
+            })
+          )
+          .pattern(({ name, maxTest }) => ({
+            partition: `NAME#${name}`,
+            range: { lte: `TEST#${maxTest}` },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', maxTest: '100' },
+          ltPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(6); // 001, 002, 003, 010, 020, 100
+        expect(result.totalCount).toBe(6);
+
+        // Verify all results are <= 100
+        result.edges.forEach((edge) => {
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeLessThanOrEqual(100);
+        });
+      });
+
+      it('should handle less than (exclusive) range query', async () => {
+        const ltPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              maxTest: string(),
+            })
+          )
+          .pattern(({ name, maxTest }) => ({
+            partition: `NAME#${name}`,
+            range: { lt: `TEST#${maxTest}` },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', maxTest: '100' },
+          ltPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(5); // 001, 002, 003, 010, 020 (exclusive)
+        expect(result.totalCount).toBe(5);
+
+        // Verify all results are < 100
+        result.edges.forEach((edge) => {
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeLessThan(100);
+        });
+      });
+    });
+
+    describe('Complex Range Queries', () => {
+      it('should handle range query with multiple conditions', async () => {
+        const complexPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              minTest: string(),
+              maxTest: string(),
+            })
+          )
+          .pattern(({ name, minTest, maxTest }) => ({
+            partition: `NAME#${name}`,
+            range: { gte: `TEST#${minTest}`, lte: `TEST#${maxTest}` },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', minTest: '010', maxTest: '300' },
+          complexPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(7); // 010, 020, 100, 200, 300, 400, 500
+        expect(result.totalCount).toBe(7);
+
+        // Verify all results are within the range
+        result.edges.forEach((edge) => {
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeGreaterThanOrEqual(10);
+          expect(testNum).toBeLessThanOrEqual(500);
+        });
+      });
+
+      it('should handle range query with begins_with and upper bound', async () => {
+        const beginsWithUpperPattern = TestEntity.build(
+          PagerEntityAccessPattern
+        )
+          .schema(
+            map({
+              name: string(),
+              testPrefix: string(),
+              maxTest: string(),
+            })
+          )
+          .pattern(({ name, testPrefix, maxTest }) => ({
+            partition: `NAME#${name}`,
+            range: {
+              starts_with: `TEST#${testPrefix}`,
+              lte: `TEST#${maxTest}`,
+            },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', testPrefix: '0', maxTest: '020' },
+          beginsWithUpperPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(5); // 001, 002, 003, 010, 020
+        expect(result.totalCount).toBe(5);
+
+        // Verify all results start with '0' and are <= 020
+        result.edges.forEach((edge) => {
+          expect(edge.node.test).toMatch(/^0/);
+          const testNum = parseInt(edge.node.test, 10);
+          expect(testNum).toBeLessThanOrEqual(20);
+        });
+      });
+    });
+
+    describe('Range Query Edge Cases', () => {
+      it('should handle empty range query results', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#050`, `TEST#099`] },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', startTest: '050', endTest: '099' },
+          betweenPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(0);
+        expect(result.totalCount).toBe(0);
+        expect(result.pageInfo.hasNextPage).toBe(false);
+        expect(result.pageInfo.hasPreviousPage).toBe(false);
+      });
+
+      it('should handle range query with invalid bounds (start > end)', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        // This should throw a DynamoDB validation error
+        await expect(
+          paginate(
+            { name: 'alice', startTest: '500', endTest: '100' },
+            betweenPattern,
+            { first: 10 },
+            { primaryKey: 'name' }
+          )
+        ).rejects.toThrow('Invalid KeyConditionExpression');
+      });
+
+      it('should handle range query with exact match bounds', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', startTest: '100', endTest: '100' },
+          betweenPattern,
+          { first: 10 },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(1);
+        expect(result.totalCount).toBe(1);
+        expect(result.edges[0].node.test).toBe('100');
+      });
+    });
+
+    describe('Range Query with Ordering', () => {
+      it('should handle range query with ascending order', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', startTest: '010', endTest: '200' },
+          betweenPattern,
+          { first: 10, orderDirection: 'asc' },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(4); // 010, 020, 100, 200
+        expect(result.totalCount).toBe(4);
+
+        // Verify ascending order
+        const testValues = result.edges.map((edge) =>
+          parseInt(edge.node.test, 10)
+        );
+        for (let i = 1; i < testValues.length; i += 1) {
+          expect(testValues[i]).toBeGreaterThan(testValues[i - 1]);
+        }
+      });
+
+      it('should handle range query with descending order', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        const result = await paginate(
+          { name: 'alice', startTest: '010', endTest: '200' },
+          betweenPattern,
+          { first: 10, orderDirection: 'desc' },
+          { primaryKey: 'name' }
+        );
+
+        expect(result.edges).toHaveLength(4); // 200, 100, 020, 010
+        expect(result.totalCount).toBe(4);
+
+        // Verify descending order
+        const testValues = result.edges.map((edge) =>
+          parseInt(edge.node.test, 10)
+        );
+        for (let i = 1; i < testValues.length; i += 1) {
+          expect(testValues[i]).toBeLessThan(testValues[i - 1]);
+        }
+      });
+    });
+
+    describe('Range Query with Cursor Pagination', () => {
+      it('should handle range query with after cursor', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        // Get first page
+        const firstResult = await paginate(
+          { name: 'alice', startTest: '001', endTest: '100' },
+          betweenPattern,
+          { first: 3 },
+          { primaryKey: 'name' }
+        );
+
+        expect(firstResult.edges).toHaveLength(3);
+        const afterCursor = firstResult.pageInfo.endCursor;
+
+        // Get second page using after cursor
+        const secondResult = await paginate(
+          { name: 'alice', startTest: '001', endTest: '100' },
+          betweenPattern,
+          { first: 3, after: afterCursor },
+          { primaryKey: 'name' }
+        );
+
+        expect(secondResult.edges).toHaveLength(3);
+        expect(secondResult.pageInfo.hasPreviousPage).toBe(true);
+
+        // Verify no overlap between pages
+        const firstPageIds = firstResult.edges.map((edge) => edge.node.test);
+        const secondPageIds = secondResult.edges.map((edge) => edge.node.test);
+        const intersection = firstPageIds.filter((id) =>
+          secondPageIds.includes(id)
+        );
+        expect(intersection).toHaveLength(0);
+      });
+
+      it('should handle range query with before cursor', async () => {
+        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+          .schema(
+            map({
+              name: string(),
+              startTest: string(),
+              endTest: string(),
+            })
+          )
+          .pattern(({ name, startTest, endTest }) => ({
+            partition: `NAME#${name}`,
+            range: { between: [`TEST#${startTest}`, `TEST#${endTest}`] },
+          }));
+
+        // Get first page
+        const firstResult = await paginate(
+          { name: 'alice', startTest: '001', endTest: '100' },
+          betweenPattern,
+          { first: 3 },
+          { primaryKey: 'name' }
+        );
+
+        // Get second page
+        const secondResult = await paginate(
+          { name: 'alice', startTest: '001', endTest: '100' },
+          betweenPattern,
+          { first: 3, after: firstResult.pageInfo.endCursor },
+          { primaryKey: 'name' }
+        );
+
+        // Go back to first page using before cursor
+        const backToFirstResult = await paginate(
+          { name: 'alice', startTest: '001', endTest: '100' },
+          betweenPattern,
+          { last: 3, before: secondResult.pageInfo.startCursor },
+          { primaryKey: 'name' }
+        );
+
+        expect(backToFirstResult.edges).toHaveLength(3);
+        expect(backToFirstResult.pageInfo.hasNextPage).toBe(true);
+
+        // Verify we got back to the first page
+        const originalIds = firstResult.edges
+          .map((edge) => edge.node.test)
+          .sort();
+        const backToFirstIds = backToFirstResult.edges
+          .map((edge) => edge.node.test)
+          .sort();
+        expect(backToFirstIds).toEqual(originalIds);
+      });
+    });
+  });
 });
