@@ -104,7 +104,7 @@ function buildRemoveNodesFromBeforeOrAfter<
       isAggregateFn,
       formatColumnFn,
       primaryKey,
-    }: OrderArgs<KnexOrderByColumn<TResult>, TResult, string>
+    }: OrderArgs<KnexOrderByColumn<TResult>>
   ): Knex.QueryBuilder<TResult, TRecord> => {
     const data = getDataFromCursor(cursorOfInitialNode);
     const [id, columnValue] = data;
@@ -249,7 +249,7 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
               formatColumnFn,
               false
             ) as unknown as any,
-            ascOrDesc[0]
+            'asc'
           )
         : prev.orderBy(
             formatColumnIfAvailable(
@@ -257,7 +257,7 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
               formatColumnFn,
               false
             ) as unknown as any,
-            ascOrDesc as 'asc' | 'desc'
+            'asc'
           )
   );
   return result;
@@ -269,10 +269,6 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
 // applyAfterCursor(resultSet, 'B') should return [C, D]
 export const applyAfterCursor = buildRemoveNodesFromBeforeOrAfter('before');
 
-// Used when `first` is included in the query
-// It must remove nodes from the result set starting from the end until it's of size `length`.
-// e.g. let [A, B, C, D] be the `resultSet`
-// removeNodesFromEnd(resultSet, 3) should return [A, B, C]
 export const returnNodesForFirst = <
   TResult extends {},
   TRecord extends {} = TResult,
@@ -417,8 +413,7 @@ export default function paginate<
       typeof apolloCursorPaginationBuilder<
         TResult,
         Knex.QueryBuilder<TResult, TRecord>,
-        KnexOrderByColumn<TResult>,
-        string
+        KnexOrderByColumn<TResult>
       >
     >
   >[1],
@@ -427,8 +422,7 @@ export default function paginate<
       typeof apolloCursorPaginationBuilder<
         TResult,
         Knex.QueryBuilder<TResult, TRecord>,
-        KnexOrderByColumn<TResult>,
-        string
+        KnexOrderByColumn<TResult>
       >
     >
   >[2]
@@ -436,18 +430,17 @@ export default function paginate<
   return apolloCursorPaginationBuilder<
     TResult,
     Knex.QueryBuilder<TResult, TRecord>,
-    KnexOrderByColumn<TResult>,
-    string
+    KnexOrderByColumn<TResult>
   >({
     applyAfterCursor: applyAfterCursor as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       cursor: string,
-      opts: OrderArgs<KnexOrderByColumn<TResult>, TResult, string>
+      opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Knex.QueryBuilder<TResult, TRecord>,
     applyBeforeCursor: applyBeforeCursor as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       cursor: string,
-      opts: OrderArgs<KnexOrderByColumn<TResult>, TResult, string>
+      opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Knex.QueryBuilder<TResult, TRecord>,
     returnTotalCount: returnTotalCount as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>
@@ -455,21 +448,21 @@ export default function paginate<
     returnNodesForFirst: returnNodesForFirst as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       count: number,
-      opts: OrderArgs<KnexOrderByColumn<TResult>, TResult, string>
+      opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Promise<TResult[]>,
     returnNodesForLast: returnNodesForLast as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
       count: number,
-      opts: OrderArgs<KnexOrderByColumn<TResult>, TResult, string>
+      opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => Promise<TResult[]>,
     convertNodesToEdges: convertNodesToEdges as unknown as (
       nodes: TResult[],
       params: any,
-      opts: OrderArgs<KnexOrderByColumn<TResult>, TResult, string>
+      opts: OrderArgs<KnexOrderByColumn<TResult>>
     ) => { cursor: string; node: TResult }[],
     applyOrderBy: applyOrderBy as unknown as (
       nodeAccessor: Knex.QueryBuilder<TResult, TRecord>,
-      opts: OrderArgs<KnexOrderByColumn<TResult>, TResult, string> & {
+      opts: OrderArgs<KnexOrderByColumn<TResult>> & {
         primaryKey: string;
       }
     ) => Knex.QueryBuilder<TResult, TRecord>,

@@ -1,19 +1,17 @@
 // based on Relay's Connection spec at
 // https://facebook.github.io/relay/graphql/connections.htm#sec-Pagination-algorithm
 
-export interface OrderArgs<C, N, PK> {
+export interface OrderArgs<C> {
   orderColumn: string | string[];
   ascOrDesc: 'asc' | 'desc' | ('asc' | 'desc')[];
   isAggregateFn?: (column: string) => boolean;
   formatColumnFn?: (column: string) => C;
-  formatPrimaryKeyFn?: (node: N) => PK;
   primaryKey: string;
 }
 
-export interface ExternalOrderArgs<C, N, PK> {
+export interface ExternalOrderArgs<C> {
   isAggregateFn?: (column: string) => boolean;
   formatColumnFn?: (column: string) => C;
-  formatPrimaryKeyFn?: (node: N) => PK;
   primaryKey?: string;
 }
 
@@ -31,29 +29,29 @@ export const encode = (str: string): string =>
 export const decode = (str: string): string =>
   Buffer.from(str, 'base64').toString();
 
-export interface OperatorFunctions<N, NA, C, PK = string> {
+export interface OperatorFunctions<N, NA, C> {
   // apply* methods alter the nodeAccessor
   applyAfterCursor: (
     nodeAccessor: NA,
     cursor: string,
-    opts: OrderArgs<C, N, PK>
+    opts: OrderArgs<C>
   ) => NA;
   applyBeforeCursor: (
     nodeAccessor: NA,
     cursor: string,
-    opts: OrderArgs<C, N, PK>
+    opts: OrderArgs<C>
   ) => NA;
-  applyOrderBy: (nodeAccessor: NA, opts: OrderArgs<C, N, PK>) => NA;
+  applyOrderBy: (nodeAccessor: NA, opts: OrderArgs<C>) => NA;
   // return* methods talk to the datasource
   returnNodesForFirst: (
     nodeAccessor: NA,
     count: number,
-    opts: OrderArgs<C, N, PK>
+    opts: OrderArgs<C>
   ) => Promise<N[]>;
   returnNodesForLast: (
     nodeAccessor: NA,
     count: number,
-    opts: OrderArgs<C, N, PK>
+    opts: OrderArgs<C>
   ) => Promise<N[]>;
   // returnTotalCount ignores the nodeAccessor and returns the total count of the nodes
   // Can be skipped if you don't want to calculate the total count
@@ -61,12 +59,10 @@ export interface OperatorFunctions<N, NA, C, PK = string> {
   convertNodesToEdges: (
     nodes: N[],
     params: GraphQLParams | undefined,
-    opts: OrderArgs<C, N, PK>
+    opts: OrderArgs<C>
   ) => { cursor: string; node: N }[];
 }
-
-export interface BuilderOptions<C, N, PK>
-  extends Partial<ExternalOrderArgs<C, N, PK>> {
+export interface BuilderOptions<C> extends Partial<ExternalOrderArgs<C>> {
   skipTotalCount?: boolean;
   modifyEdgeFn?: <T>(edge: { cursor: string; node: T }) => {
     cursor: string;
@@ -90,17 +86,17 @@ export interface ConnectionResult<T> {
 /**
  * Slices the nodes list according to the `before` and `after` graphql query params.
  */
-const applyCursorsToNodes = <N, NA, C, PK>(
+const applyCursorsToNodes = <N, NA, C>(
   allNodesAccessor: NA,
   { before, after }: Pick<GraphQLParams, 'before' | 'after'>,
   {
     applyAfterCursor,
     applyBeforeCursor,
   }: Pick<
-    OperatorFunctions<N, NA, C, PK>,
+    OperatorFunctions<N, NA, C>,
     'applyAfterCursor' | 'applyBeforeCursor'
   >,
-  opts: OrderArgs<C, N, PK>
+  opts: OrderArgs<C>
 ): NA => {
   let nodesAccessor = allNodesAccessor;
   if (after) {
@@ -115,10 +111,10 @@ const applyCursorsToNodes = <N, NA, C, PK>(
 /**
  * Slices a node list according to `before`, `after`, `first` and `last` graphql query params.
  */
-const nodesToReturn = async <N, NA, C, PK>(
+const nodesToReturn = async <N, NA, C>(
   allNodesAccessor: NA,
   operatorFunctions: Pick<
-    OperatorFunctions<N, NA, C, PK>,
+    OperatorFunctions<N, NA, C>,
     | 'applyAfterCursor'
     | 'applyBeforeCursor'
     | 'returnNodesForFirst'
@@ -131,7 +127,7 @@ const nodesToReturn = async <N, NA, C, PK>(
     first,
     last,
   }: Pick<GraphQLParams, 'before' | 'after' | 'first' | 'last'>,
-  opts: OrderArgs<C, N, PK>
+  opts: OrderArgs<C>
 ): Promise<{ nodes: N[]; hasNextPage: boolean; hasPreviousPage: boolean }> => {
   const orderedNodesAccessor = operatorFunctions.applyOrderBy(
     allNodesAccessor,
@@ -187,7 +183,7 @@ const nodesToReturn = async <N, NA, C, PK>(
  * Returns a function that must be called to generate a Relay's Connection based page.
  */
 const apolloCursorPaginationBuilder =
-  <N, NA, C, PK>({
+  <N, NA, C>({
     applyAfterCursor,
     applyBeforeCursor,
     returnTotalCount,
@@ -195,16 +191,15 @@ const apolloCursorPaginationBuilder =
     returnNodesForLast,
     convertNodesToEdges,
     applyOrderBy,
-  }: OperatorFunctions<N, NA, C, PK>) =>
+  }: OperatorFunctions<N, NA, C>) =>
   async (
     allNodesAccessor: NA,
     args: GraphQLParams = {},
-    opts: BuilderOptions<C, N, PK> = {}
+    opts: BuilderOptions<C> = {}
   ): Promise<ConnectionResult<N>> => {
     const {
       isAggregateFn,
       formatColumnFn,
-      formatPrimaryKeyFn,
       skipTotalCount = false,
       modifyEdgeFn,
       primaryKey = 'id',
@@ -241,7 +236,6 @@ const apolloCursorPaginationBuilder =
         ascOrDesc,
         isAggregateFn,
         formatColumnFn,
-        formatPrimaryKeyFn,
         primaryKey,
       }
     );
@@ -263,7 +257,6 @@ const apolloCursorPaginationBuilder =
         ascOrDesc,
         isAggregateFn,
         formatColumnFn,
-        formatPrimaryKeyFn,
         primaryKey,
       }
     );

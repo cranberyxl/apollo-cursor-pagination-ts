@@ -37,7 +37,7 @@ describe('apolloCursorPaginationBuilder', () => {
         cursor: `cursor:${node.id}`,
         node,
       })),
-    applyOrderBy: (nodes: Node[], options: OrderArgs<string, Node, string>) =>
+    applyOrderBy: (nodes: Node[], options: OrderArgs<string>) =>
       [...nodes].sort((a, b) => {
         const aVal = a[options.orderColumn as keyof Node];
         const bVal = b[options.orderColumn as keyof Node];
@@ -47,12 +47,9 @@ describe('apolloCursorPaginationBuilder', () => {
       }),
   };
 
-  const paginationBuilder = apolloCursorPaginationBuilder<
-    Node,
-    Node[],
-    string,
-    string
-  >(mockOperatorFunctions);
+  const paginationBuilder = apolloCursorPaginationBuilder<Node, Node[], string>(
+    mockOperatorFunctions
+  );
 
   it('should return first N nodes when first is specified', async () => {
     const params = {

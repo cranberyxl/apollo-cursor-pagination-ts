@@ -122,15 +122,33 @@ export class PagerEntityAccessPattern<
     );
   }
 
-  query(
-    input: InputValue<SCHEMA>
-  ): Entity extends ENTITY
-    ? IQueryCommand
-    : QueryCommand<ENTITY['table'], [ENTITY], QUERY, OPTIONS> {
-    type QUERY_COMMAND = Entity extends ENTITY
-      ? IQueryCommand
-      : QueryCommand<ENTITY['table'], [ENTITY], QUERY, OPTIONS>;
+  getAdditonalIndexKeys(input: InputValue<SCHEMA>): string[] {
+    const query = this.generateQuery(input);
 
+    if (query.index === undefined) {
+      return [];
+    }
+
+    const index = this.entity.table.indexes[query.index];
+
+    if (!index) {
+      throw new DynamoDBToolboxError('actions.incompleteAction', {
+        message: 'AccessPattern error: Pattern index not found',
+      });
+    }
+
+    const keys: string[] = [];
+    if (index.partitionKey) {
+      keys.push(index.partitionKey.name);
+    }
+    if (index.sortKey) {
+      keys.push(index.sortKey.name);
+    }
+
+    return keys;
+  }
+
+  private generateQuery(input: InputValue<SCHEMA>) {
     const schema = this[$schema];
     if (schema === undefined) {
       throw new DynamoDBToolboxError('actions.incompleteAction', {
@@ -148,6 +166,20 @@ export class PagerEntityAccessPattern<
     const parser = new Parser(schema);
     const transformedInput = parser.parse(input);
     const query = pattern(transformedInput);
+
+    return query;
+  }
+
+  query(
+    input: InputValue<SCHEMA>
+  ): Entity extends ENTITY
+    ? IQueryCommand
+    : QueryCommand<ENTITY['table'], [ENTITY], QUERY, OPTIONS> {
+    type QUERY_COMMAND = Entity extends ENTITY
+      ? IQueryCommand
+      : QueryCommand<ENTITY['table'], [ENTITY], QUERY, OPTIONS>;
+
+    const query = this.generateQuery(input);
     const options = this[$options];
 
     return new QueryCommand<ENTITY['table'], [ENTITY], QUERY, OPTIONS>(

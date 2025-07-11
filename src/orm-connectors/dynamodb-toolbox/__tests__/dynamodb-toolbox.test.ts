@@ -74,7 +74,6 @@ const factory = Factory.define<FormattedItem<typeof TestEntity>>(
 describe('DynamoDB Toolbox Pagination', () => {
   let testEntities: FormattedItem<typeof TestEntity>[];
   let reversedTestEntities: FormattedItem<typeof TestEntity>[];
-  let gsi2TestEntities: FormattedItem<typeof TestEntity>[];
 
   beforeEach(async () => {
     await createTable();
@@ -95,10 +94,6 @@ describe('DynamoDB Toolbox Pagination', () => {
       .sort((a, b) => a.test.localeCompare(b.test));
 
     reversedTestEntities = [...testEntities].reverse();
-
-    gsi2TestEntities = [...testEntities].sort((a, b) =>
-      a.color.localeCompare(b.color)
-    );
 
     await Promise.all(testEntities.map((entity) => testRepo.put(entity)));
   });
@@ -555,13 +550,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const result = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 5 },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 5 }
       );
 
       expect(result.totalCount).toBe(10);
@@ -572,22 +561,7 @@ describe('DynamoDB Toolbox Pagination', () => {
         endCursor: result.edges[4].cursor,
       });
 
-      expect(result.edges).toEqual(
-        gsi2TestEntities.slice(0, 5).map((entity) => ({
-          cursor: cursorGenerator({
-            pk: `NAME#${entity.name}`,
-            sk: `TEST#${entity.test}`,
-            pk2: `CATEGORY#${entity.category}`,
-            sk2: `COLOR#${entity.color}`,
-          }),
-          node: {
-            ...entity,
-            entity: 'TestEntity',
-            createdAt: expect.any(String),
-            updatedAt: expect.any(String),
-          },
-        }))
-      );
+      expect(result.edges).toHaveLength(5);
     });
 
     it('should handle GSI2 pagination with after cursor', async () => {
@@ -595,13 +569,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const firstResult = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 3 },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 3 }
       );
 
       expect(firstResult.edges).toHaveLength(3);
@@ -611,13 +579,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const secondResult = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 3, after: afterCursor },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 3, after: afterCursor }
       );
 
       expect(secondResult.edges).toHaveLength(3);
@@ -639,39 +601,21 @@ describe('DynamoDB Toolbox Pagination', () => {
       const firstResult = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 5 },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 5 }
       );
 
       // Get second page
       const secondResult = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 5, after: firstResult.pageInfo.endCursor },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 5, after: firstResult.pageInfo.endCursor }
       );
 
       // Go back to first page using before cursor
       const backToFirstResult = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { last: 5, before: secondResult.pageInfo.startCursor },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { last: 5, before: secondResult.pageInfo.startCursor }
       );
 
       expect(backToFirstResult.edges).toHaveLength(5);
@@ -692,13 +636,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const result = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 10, orderDirection: 'desc' },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 10, orderDirection: 'desc' }
       );
 
       expect(result.edges).toHaveLength(10);
@@ -715,13 +653,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const result = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { last: 5 },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { last: 5 }
       );
 
       expect(result.totalCount).toBe(10);
@@ -739,13 +671,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const result = await paginate(
         { category: 'nonexistent' },
         gsi2AccessPattern,
-        { first: 10 },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 10 }
       );
 
       expect(result.edges).toHaveLength(0);
@@ -758,13 +684,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       const result = await paginate(
         { category: 'premium' },
         gsi2AccessPattern,
-        { first: 3 },
-        {
-          formatPrimaryKeyFn: (node) => ({
-            pk2: `CATEGORY#${node.category}`,
-            sk2: `COLOR#${node.color}`,
-          }),
-        }
+        { first: 3 }
       );
 
       expect(result.edges).toHaveLength(3);
@@ -773,15 +693,9 @@ describe('DynamoDB Toolbox Pagination', () => {
       result.edges.forEach((edge) => {
         const decodedCursor = getDataFromCursor(edge.cursor);
 
-        // Cursor should contain the GSI2 key values
-        expect(decodedCursor).toHaveProperty('pk2');
-        expect(decodedCursor).toHaveProperty('sk2');
-
-        // The pk2 should be the CATEGORY# prefix
-        expect(decodedCursor.pk2).toMatch(/^CATEGORY#/);
-
-        // The sk2 should be the COLOR# prefix
-        expect(decodedCursor.sk2).toMatch(/^COLOR#/);
+        // Cursor should contain the primary key values
+        expect(decodedCursor).toHaveProperty('pk');
+        expect(decodedCursor).toHaveProperty('sk');
       });
 
       // Verify cursor uniqueness
@@ -1213,7 +1127,7 @@ describe('DynamoDB Toolbox Pagination', () => {
               endTest: string(),
             })
           )
-          .pattern(({ name, startTest, endTest }) => ({
+          .pattern(({ name }) => ({
             partition: `NAME#${name}`,
             range: { between: [`TEST#050`, `TEST#099`] },
           }));

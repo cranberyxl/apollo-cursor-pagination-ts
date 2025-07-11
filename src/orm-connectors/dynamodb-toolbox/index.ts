@@ -29,17 +29,12 @@ export default function paginate<
   queryInput: InputValue<SCHEMA>,
   accessPattern: PagerEntityAccessPattern<ENTITY, SCHEMA>,
   args?: GraphQLParams,
-  builderOptions?: BuilderOptions<
-    undefined,
-    FormattedItem<ENTITY>,
-    Record<string, any>
-  >
+  builderOptions?: BuilderOptions<undefined>
 ) {
   return apolloCursorPaginationBuilder<
     FormattedItem<ENTITY>,
     PagerEntityAccessPattern<ENTITY, SCHEMA>,
-    undefined,
-    Record<string, any>
+    undefined
   >({
     applyAfterCursor: (nodeAccessor, afterCursor) => {
       const decodedCursor = getDataFromCursor(afterCursor);
@@ -94,21 +89,25 @@ export default function paginate<
         .send();
       return result.Count || 0;
     },
-    convertNodesToEdges: (nodes, _, opts) =>
+    convertNodesToEdges: (nodes) =>
       nodes.map((node) => {
-        let nodePrimaryKey: Record<string, any> = accessPattern.entity
-          .build(EntityParser)
-          .parse(node, { mode: 'key' }).key;
+        const parsed = accessPattern.entity.build(EntityParser).parse(node);
 
-        if (opts.formatPrimaryKeyFn) {
-          nodePrimaryKey = {
-            ...nodePrimaryKey,
-            ...opts.formatPrimaryKeyFn(node),
-          };
-        }
+        // Use the index info in the query to find all the keys
+        const nodePrimaryKey: Record<string, any> = parsed.key;
+        const additionalKeys = accessPattern.getAdditonalIndexKeys(queryInput);
+
+        const nodePrimaryKeyWithAdditionalKeys = {
+          ...nodePrimaryKey,
+        };
+
+        additionalKeys.forEach((key) => {
+          nodePrimaryKeyWithAdditionalKeys[key] = parsed.item[key];
+        });
 
         return {
-          cursor: cursorGenerator(nodePrimaryKey),
+          cursor: cursorGenerator(nodePrimaryKeyWithAdditionalKeys),
+
           node,
         };
       }),
