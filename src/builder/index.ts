@@ -149,6 +149,12 @@ const nodesToReturn = async <N, NA, C, PK>(
   let hasNextPage = !!before;
   let hasPreviousPage = !!after;
   let nodes: N[] = [];
+
+  // Check if both first and last are provided
+  if (first && last) {
+    throw new Error('Cannot specify both `first` and `last` arguments');
+  }
+
   if (first) {
     if (first < 0) throw new Error('`first` argument must not be less than 0');
     nodes = await operatorFunctions.returnNodesForFirst(
@@ -160,8 +166,7 @@ const nodesToReturn = async <N, NA, C, PK>(
       hasNextPage = true;
       nodes = nodes.slice(0, first);
     }
-  }
-  if (last) {
+  } else if (last) {
     if (last < 0) throw new Error('`last` argument must not be less than 0');
     nodes = await operatorFunctions.returnNodesForLast(
       nodesAccessor,
@@ -172,6 +177,8 @@ const nodesToReturn = async <N, NA, C, PK>(
       hasPreviousPage = true;
       nodes = nodes.slice(1);
     }
+  } else {
+    throw new Error('`first` or `last` argument must be provided');
   }
   return { nodes, hasNextPage, hasPreviousPage };
 };

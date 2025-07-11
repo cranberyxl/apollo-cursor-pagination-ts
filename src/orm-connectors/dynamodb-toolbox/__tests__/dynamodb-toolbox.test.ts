@@ -479,17 +479,16 @@ describe('DynamoDB Toolbox Pagination', () => {
       ).rejects.toThrow();
     });
 
-    it('should handle both first and last parameters', async () => {
-      // This should prioritize 'first' over 'last'
-      const result = await paginate(
-        { name: 'bob' },
-        testAccessPattern,
-        { first: 3, last: 5 },
-        { primaryKey: 'name' }
-      );
-
-      expect(result.edges).toHaveLength(5);
-      expect(result.totalCount).toBe(10);
+    it('both first and last should throw an error', async () => {
+      // This should throw an error when both first and last are provided
+      await expect(
+        paginate(
+          { name: 'bob' },
+          testAccessPattern,
+          { first: 3, last: 5 },
+          { primaryKey: 'name' }
+        )
+      ).rejects.toThrow('Cannot specify both `first` and `last` arguments');
     });
   });
 
