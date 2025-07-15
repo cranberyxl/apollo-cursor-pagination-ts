@@ -57,7 +57,7 @@ export default function paginate<
   queryInput: InputValue<SCHEMA>,
   accessPattern: PagerEntityAccessPattern<ENTITY, SCHEMA>,
   args?: GraphQLParams,
-  builderOptions?: BuilderOptions<undefined>
+  builderOptions?: BuilderOptions<undefined, FormattedItem<ENTITY>>
 ) {
   return apolloCursorPaginationBuilder<
     FormattedItem<ENTITY>,

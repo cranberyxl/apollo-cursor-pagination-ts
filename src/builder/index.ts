@@ -62,11 +62,11 @@ export interface OperatorFunctions<N, NA, C> {
     opts: OrderArgs<C>
   ) => { cursor: string; node: N }[];
 }
-export interface BuilderOptions<C> extends Partial<ExternalOrderArgs<C>> {
+export interface BuilderOptions<C, N> extends Partial<ExternalOrderArgs<C>> {
   skipTotalCount?: boolean;
-  modifyEdgeFn?: <T>(edge: { cursor: string; node: T }) => {
+  modifyEdgeFn?: <NewNode>(edge: { cursor: string; node: N }) => {
     cursor: string;
-    node: T;
+    node: NewNode;
   };
 }
 
@@ -195,7 +195,7 @@ const apolloCursorPaginationBuilder =
   async (
     allNodesAccessor: NA,
     args: GraphQLParams = {},
-    opts: BuilderOptions<C> = {}
+    opts: BuilderOptions<C, N> = {}
   ): Promise<ConnectionResult<N>> => {
     const {
       isAggregateFn,
