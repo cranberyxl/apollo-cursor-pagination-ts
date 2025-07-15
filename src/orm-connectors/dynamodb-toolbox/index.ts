@@ -22,6 +22,34 @@ export const getDataFromCursor = (cursor: string) => JSON.parse(decode(cursor));
 
 export { PagerEntityAccessPattern };
 
+export const convertNodesToEdges =
+  <N, ENTITY extends Entity = Entity, SCHEMA extends Schema = Schema>(
+    queryInput: InputValue<SCHEMA>,
+    accessPattern: PagerEntityAccessPattern<ENTITY, SCHEMA>
+  ) =>
+  (nodes: N[]) =>
+    nodes.map((node) => {
+      const parsed = accessPattern.entity.build(EntityParser).parse(node);
+
+      // Use the index info in the query to find all the keys
+      const nodePrimaryKey: Record<string, any> = parsed.key;
+      const additionalKeys = accessPattern.getAdditonalIndexKeys(queryInput);
+
+      const nodePrimaryKeyWithAdditionalKeys = {
+        ...nodePrimaryKey,
+      };
+
+      additionalKeys.forEach((key) => {
+        nodePrimaryKeyWithAdditionalKeys[key] = parsed.item[key];
+      });
+
+      return {
+        cursor: cursorGenerator(nodePrimaryKeyWithAdditionalKeys),
+
+        node,
+      };
+    });
+
 export default function paginate<
   ENTITY extends Entity = Entity,
   SCHEMA extends Schema = Schema,
@@ -89,28 +117,7 @@ export default function paginate<
         .send();
       return result.Count || 0;
     },
-    convertNodesToEdges: (nodes) =>
-      nodes.map((node) => {
-        const parsed = accessPattern.entity.build(EntityParser).parse(node);
-
-        // Use the index info in the query to find all the keys
-        const nodePrimaryKey: Record<string, any> = parsed.key;
-        const additionalKeys = accessPattern.getAdditonalIndexKeys(queryInput);
-
-        const nodePrimaryKeyWithAdditionalKeys = {
-          ...nodePrimaryKey,
-        };
-
-        additionalKeys.forEach((key) => {
-          nodePrimaryKeyWithAdditionalKeys[key] = parsed.item[key];
-        });
-
-        return {
-          cursor: cursorGenerator(nodePrimaryKeyWithAdditionalKeys),
-
-          node,
-        };
-      }),
+    convertNodesToEdges: convertNodesToEdges(queryInput, accessPattern),
     applyOrderBy: (nodeAccessor) => nodeAccessor,
   })(accessPattern as any, args, builderOptions ?? {});
 }
