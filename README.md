@@ -30,14 +30,14 @@ yarn add apollo-cursor-pagination-ts
 This library requires the following peer dependencies:
 
 - **knex**: `*` (any version) - Required for the Knex.js connector
-- **dynamodb-toolbox**: `^2.6.4` - Required for the DynamoDB connector (if using)
+- **dynamodb-toolbox**: `^2.6.5` - Required for the DynamoDB connector (if using)
 
 Make sure to install these in your project:
 
 ```bash
 npm install knex
 # or if using DynamoDB
-npm install dynamodb-toolbox@^2.6.4
+npm install dynamodb-toolbox@^2.6.5
 ```
 
 ## Quick Start
@@ -79,8 +79,8 @@ import {
   number,
   prefix,
   map,
+  EntityAccessPattern,
 } from 'dynamodb-toolbox';
-import { PagerEntityAccessPattern } from 'apollo-cursor-pagination-ts';
 
 // Define your entity using v2 syntax
 const UserEntity = new Entity({
@@ -97,8 +97,8 @@ const UserEntity = new Entity({
 
 const userRepo = UserEntity.build(EntityRepository);
 
-// Create an access pattern using PagerEntityAccessPattern (required for pagination)
-const usersByCategory = UserEntity.build(PagerEntityAccessPattern)
+// Create an access pattern using EntityAccessPattern (required for pagination)
+const usersByCategory = UserEntity.build(EntityAccessPattern)
   .schema(map({ category: string() }))
   .pattern(({ category }) => ({ partition: `CATEGORY#${category}` }))
   .meta({
@@ -308,14 +308,14 @@ const result = await dynamodbPaginator(
 
 #### DynamoDB Access Patterns
 
-Access patterns are the key concept in DynamoDB Toolbox. They define how to query your data based on your table's design. **Important**: For pagination to work correctly, you must use `PagerEntityAccessPattern` instead of the standard `AccessPattern` from DynamoDB Toolbox.
+Access patterns are the key concept in DynamoDB Toolbox. They define how to query your data based on your table's design. **Important**: For pagination to work correctly, you must use `EntityAccessPattern` from DynamoDB Toolbox.
 
 ```typescript
-import { PagerEntityAccessPattern } from 'apollo-cursor-pagination-ts/orm-connectors/dynamodb-toolbox';
+import { EntityAccessPattern } from 'dynamodb-toolbox';
 import { map, string, number } from 'dynamodb-toolbox';
 
 // Simple access pattern by partition key
-const usersByCategory = UserEntity.build(PagerEntityAccessPattern)
+const usersByCategory = UserEntity.build(EntityAccessPattern)
   .schema(map({ category: string() }))
   .pattern(({ category }) => ({ partition: `CATEGORY#${category}` }))
   .meta({
@@ -324,7 +324,7 @@ const usersByCategory = UserEntity.build(PagerEntityAccessPattern)
   });
 
 // Access pattern with sort key
-const usersByCategoryAndDate = UserEntity.build(PagerEntityAccessPattern)
+const usersByCategoryAndDate = UserEntity.build(EntityAccessPattern)
   .schema(map({ category: string(), date: string() }))
   .pattern(({ category, date }) => ({
     partition: `CATEGORY#${category}`,
@@ -336,7 +336,7 @@ const usersByCategoryAndDate = UserEntity.build(PagerEntityAccessPattern)
   });
 
 // Access pattern with GSI
-const usersByEmail = UserEntity.build(PagerEntityAccessPattern)
+const usersByEmail = UserEntity.build(EntityAccessPattern)
   .schema(map({ email: string() }))
   .pattern(({ email }) => ({
     index: 'email-index',
@@ -348,57 +348,7 @@ const usersByEmail = UserEntity.build(PagerEntityAccessPattern)
   });
 
 // Access pattern with range conditions
-const usersByAgeRange = UserEntity.build(PagerEntityAccessPattern)
-  .schema(map({ category: string(), minAge: number(), maxAge: number() }))
-  .pattern(({ category, minAge, maxAge }) => ({
-    partition: `CATEGORY#${category}`,
-    range: { gte: minAge, lte: maxAge },
-  }))
-  .meta({
-    title: 'Users by Age Range',
-    description: 'Query users in a specific age range',
-  });
-```
-
-```typescript
-import { AccessPattern } from 'dynamodb-toolbox/entity/actions/accessPattern';
-import { map, string, number } from 'dynamodb-toolbox';
-
-// Simple access pattern by partition key
-const usersByCategory = UserEntity.build(AccessPattern)
-  .schema(map({ category: string() }))
-  .pattern(({ category }) => ({ partition: `CATEGORY#${category}` }))
-  .meta({
-    title: 'Users by Category',
-    description: 'Query users filtered by category',
-  });
-
-// Access pattern with sort key
-const usersByCategoryAndDate = UserEntity.build(AccessPattern)
-  .schema(map({ category: string(), date: string() }))
-  .pattern(({ category, date }) => ({
-    partition: `CATEGORY#${category}`,
-    range: { eq: `DATE#${date}` },
-  }))
-  .meta({
-    title: 'Users by Category and Date',
-    description: 'Query users by category and specific date',
-  });
-
-// Access pattern with GSI
-const usersByEmail = UserEntity.build(AccessPattern)
-  .schema(map({ email: string() }))
-  .pattern(({ email }) => ({
-    index: 'email-index',
-    partition: `EMAIL#${email}`,
-  }))
-  .meta({
-    title: 'Users by Email',
-    description: 'Query users by email using GSI',
-  });
-
-// Access pattern with range conditions
-const usersByAgeRange = UserEntity.build(AccessPattern)
+const usersByAgeRange = UserEntity.build(EntityAccessPattern)
   .schema(map({ category: string(), minAge: number(), maxAge: number() }))
   .pattern(({ category, minAge, maxAge }) => ({
     partition: `CATEGORY#${category}`,
@@ -438,7 +388,7 @@ DynamoDB pagination works seamlessly with both Global Secondary Indexes (GSI) an
 
 ```typescript
 // GSI access pattern
-const usersByEmail = UserEntity.build(PagerEntityAccessPattern)
+const usersByEmail = UserEntity.build(EntityAccessPattern)
   .schema(map({ email: string() }))
   .pattern(({ email }) => ({
     index: 'email-index', // Specify the GSI name
@@ -446,7 +396,7 @@ const usersByEmail = UserEntity.build(PagerEntityAccessPattern)
   }));
 
 // LSI access pattern
-const usersByCategoryAndDate = UserEntity.build(PagerEntityAccessPattern)
+const usersByCategoryAndDate = UserEntity.build(EntityAccessPattern)
   .schema(map({ category: string(), date: string() }))
   .pattern(({ category, date }) => ({
     index: 'category-date-index', // Specify the LSI name
@@ -581,18 +531,18 @@ const PostEntity = new Entity({
 });
 
 // Access patterns for different query patterns
-const postsByUser = PostEntity.build(PagerEntityAccessPattern)
+const postsByUser = PostEntity.build(EntityAccessPattern)
   .schema(map({ userId: string() }))
   .pattern(({ userId }) => ({ partition: `USER#${userId}` }));
 
-const postsByCategory = PostEntity.build(PagerEntityAccessPattern)
+const postsByCategory = PostEntity.build(EntityAccessPattern)
   .schema(map({ category: string() }))
   .pattern(({ category }) => ({
     index: 'gsi1',
     partition: `CATEGORY#${category}`,
   }));
 
-const postsByStatus = PostEntity.build(PagerEntityAccessPattern)
+const postsByStatus = PostEntity.build(EntityAccessPattern)
   .schema(map({ status: string() }))
   .pattern(({ status }) => ({
     index: 'gsi2',

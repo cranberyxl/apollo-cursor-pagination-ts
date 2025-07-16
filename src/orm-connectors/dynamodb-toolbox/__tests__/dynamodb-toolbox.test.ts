@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from '@jest/globals';
 import { faker } from '@faker-js/faker';
 import {
   Entity,
+  EntityAccessPattern,
   EntityRepository,
   FormattedItem,
   item,
@@ -15,7 +16,6 @@ import { Factory } from 'rosie';
 import paginate, { cursorGenerator, getDataFromCursor } from '..';
 import { encode, decode } from '../../../builder';
 import { createTable, deleteTable, table } from '../../../testUtil/ddb';
-import { PagerEntityAccessPattern } from '../PagerEntityAccessPattern';
 
 const TestEntity = new Entity({
   name: 'TestEntity',
@@ -38,7 +38,7 @@ const TestEntity = new Entity({
   entityAttribute: { hidden: false },
 });
 
-const testAccessPattern = TestEntity.build(PagerEntityAccessPattern)
+const testAccessPattern = TestEntity.build(EntityAccessPattern)
   .schema(
     map({
       name: string(),
@@ -48,7 +48,7 @@ const testAccessPattern = TestEntity.build(PagerEntityAccessPattern)
     partition: `NAME#${name}`,
   }));
 
-const gsi2AccessPattern = TestEntity.build(PagerEntityAccessPattern)
+const gsi2AccessPattern = TestEntity.build(EntityAccessPattern)
   .schema(
     map({
       category: string(),
@@ -399,7 +399,6 @@ describe('DynamoDB Toolbox Pagination', () => {
         testAccessPattern,
         {
           first: 10,
-          orderBy: 'createdAt',
           orderDirection: 'asc',
         },
         { primaryKey: 'name' }
@@ -423,7 +422,6 @@ describe('DynamoDB Toolbox Pagination', () => {
         testAccessPattern,
         {
           first: 10,
-          orderBy: 'test',
           orderDirection: 'desc',
         },
         { primaryKey: 'name' }
@@ -522,7 +520,6 @@ describe('DynamoDB Toolbox Pagination', () => {
         testAccessPattern,
         {
           first: 5,
-          orderBy: 'createdAt',
           orderDirection: 'desc',
         },
         {
@@ -783,7 +780,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       it('returns all test events', async () => {
         const result = await paginate(
           { name: 'alice' },
-          TestEntity.build(PagerEntityAccessPattern)
+          TestEntity.build(EntityAccessPattern)
             .schema(map({ name: string() }))
             .pattern(({ name }) => ({
               partition: `NAME#${name}`,
@@ -799,7 +796,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle begins_with range query on sort key', async () => {
-        const beginsWithPattern = TestEntity.build(PagerEntityAccessPattern)
+        const beginsWithPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -827,7 +824,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle begins_with range query with pagination', async () => {
-        const beginsWithPattern = TestEntity.build(PagerEntityAccessPattern)
+        const beginsWithPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -865,7 +862,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Between Range Queries', () => {
       it('should handle between range query on sort key', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -897,7 +894,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle between range query with inclusive bounds', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -924,7 +921,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Greater Than Range Queries', () => {
       it('should handle greater than range query on sort key', async () => {
-        const gtPattern = TestEntity.build(PagerEntityAccessPattern)
+        const gtPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -954,7 +951,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle greater than (exclusive) range query', async () => {
-        const gtPattern = TestEntity.build(PagerEntityAccessPattern)
+        const gtPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -986,7 +983,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Less Than Range Queries', () => {
       it('should handle less than range query on sort key', async () => {
-        const ltPattern = TestEntity.build(PagerEntityAccessPattern)
+        const ltPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1016,7 +1013,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle less than (exclusive) range query', async () => {
-        const ltPattern = TestEntity.build(PagerEntityAccessPattern)
+        const ltPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1048,7 +1045,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Complex Range Queries', () => {
       it('should handle range query with multiple conditions', async () => {
-        const complexPattern = TestEntity.build(PagerEntityAccessPattern)
+        const complexPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1080,9 +1077,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle range query with begins_with and upper bound', async () => {
-        const beginsWithUpperPattern = TestEntity.build(
-          PagerEntityAccessPattern
-        )
+        const beginsWithUpperPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1119,7 +1114,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Range Query Edge Cases', () => {
       it('should handle empty range query results', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1146,7 +1141,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle range query with invalid bounds (start > end)', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1171,7 +1166,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle range query with exact match bounds', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1199,7 +1194,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Range Query with Ordering', () => {
       it('should handle range query with ascending order', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1232,7 +1227,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle range query with descending order', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1267,7 +1262,7 @@ describe('DynamoDB Toolbox Pagination', () => {
 
     describe('Range Query with Cursor Pagination', () => {
       it('should handle range query with after cursor', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),
@@ -1312,7 +1307,7 @@ describe('DynamoDB Toolbox Pagination', () => {
       });
 
       it('should handle range query with before cursor', async () => {
-        const betweenPattern = TestEntity.build(PagerEntityAccessPattern)
+        const betweenPattern = TestEntity.build(EntityAccessPattern)
           .schema(
             map({
               name: string(),

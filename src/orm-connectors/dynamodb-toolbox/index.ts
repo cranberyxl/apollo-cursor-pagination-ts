@@ -5,6 +5,7 @@ import {
   InputValue,
   Schema,
   PrimaryKey,
+  EntityAccessPattern,
 } from 'dynamodb-toolbox';
 import apolloCursorPaginationBuilder, {
   encode,
@@ -12,7 +13,6 @@ import apolloCursorPaginationBuilder, {
   GraphQLParams,
   BuilderOptions,
 } from '../../builder';
-import { PagerEntityAccessPattern } from './PagerEntityAccessPattern';
 
 export const cursorGenerator = <E extends Entity>(
   key: PrimaryKey<E['table']>
@@ -20,12 +20,10 @@ export const cursorGenerator = <E extends Entity>(
 
 export const getDataFromCursor = (cursor: string) => JSON.parse(decode(cursor));
 
-export { PagerEntityAccessPattern };
-
 export const convertNodesToEdges =
   <N, ENTITY extends Entity = Entity, SCHEMA extends Schema = Schema>(
     queryInput: InputValue<SCHEMA>,
-    accessPattern: PagerEntityAccessPattern<ENTITY, SCHEMA>
+    accessPattern: EntityAccessPattern<ENTITY, SCHEMA>
   ) =>
   (nodes: N[]) =>
     nodes.map((node) => {
@@ -33,18 +31,20 @@ export const convertNodesToEdges =
 
       // Use the index info in the query to find all the keys
       const nodePrimaryKey: Record<string, any> = parsed.key;
-      const additionalKeys = accessPattern.getAdditonalIndexKeys(queryInput);
-
-      const nodePrimaryKeyWithAdditionalKeys = {
-        ...nodePrimaryKey,
-      };
-
-      additionalKeys.forEach((key) => {
-        nodePrimaryKeyWithAdditionalKeys[key] = parsed.item[key];
-      });
+      const queryParms = accessPattern.query(queryInput).params();
+      if (queryParms.IndexName) {
+        const index = accessPattern.entity.table.indexes[queryParms.IndexName];
+        if (index.partitionKey) {
+          nodePrimaryKey[index.partitionKey.name] =
+            parsed.item[index.partitionKey.name];
+        }
+        if (index.sortKey) {
+          nodePrimaryKey[index.sortKey.name] = parsed.item[index.sortKey.name];
+        }
+      }
 
       return {
-        cursor: cursorGenerator(nodePrimaryKeyWithAdditionalKeys),
+        cursor: cursorGenerator(nodePrimaryKey),
 
         node,
       };
@@ -55,43 +55,68 @@ export default function paginate<
   SCHEMA extends Schema = Schema,
 >(
   queryInput: InputValue<SCHEMA>,
-  accessPattern: PagerEntityAccessPattern<ENTITY, SCHEMA>,
-  args?: GraphQLParams,
+  accessPattern: EntityAccessPattern<ENTITY, SCHEMA>,
+  args?: Omit<GraphQLParams, 'orderBy'>,
   builderOptions?: BuilderOptions<undefined, FormattedItem<ENTITY>>
 ) {
   return apolloCursorPaginationBuilder<
     FormattedItem<ENTITY>,
-    PagerEntityAccessPattern<ENTITY, SCHEMA>,
+    EntityAccessPattern<ENTITY, SCHEMA>,
     undefined
   >({
     applyAfterCursor: (nodeAccessor, afterCursor) => {
       const decodedCursor = getDataFromCursor(afterCursor);
 
-      return nodeAccessor.options(
-        { exclusiveStartKey: decodedCursor },
-        { merge: true }
-      );
+      return nodeAccessor.options((previousOptions) => {
+        if (previousOptions.exclusiveStartKey) {
+          throw new Error(
+            'exclusiveStartKey already set - cannot apply after cursor'
+          );
+        }
+
+        return {
+          ...previousOptions,
+          exclusiveStartKey: decodedCursor,
+        };
+      });
     },
     applyBeforeCursor: (nodeAccessor, beforeCursor) => {
       const decodedCursor = getDataFromCursor(beforeCursor);
 
-      return nodeAccessor.options(
-        { exclusiveStartKey: decodedCursor },
-        { merge: true }
-      );
+      return nodeAccessor.options((previousOptions) => {
+        if (previousOptions.exclusiveStartKey) {
+          throw new Error(
+            'exclusiveStartKey already set - cannot apply before cursor'
+          );
+        }
+
+        return {
+          ...previousOptions,
+          exclusiveStartKey: decodedCursor,
+        };
+      });
     },
     returnNodesForFirst: async (nodeAccessor, count, orderArgs) => {
-      const q = nodeAccessor
-        .options(
-          {
+      const result = await nodeAccessor
+        .options((previousOptions) => {
+          if ('limit' in previousOptions) {
+            throw new Error('limit already set - cannot apply first');
+          }
+
+          if ('reverse' in previousOptions) {
+            throw new Error(
+              'reverse already set - cannot apply first, use orderDirection'
+            );
+          }
+
+          return {
+            ...previousOptions,
             limit: count,
             reverse: orderArgs.ascOrDesc === 'desc',
-          },
-          { merge: true }
-        )
-        .query(queryInput);
-
-      const result = await q.send();
+          };
+        })
+        .query(queryInput)
+        .send();
 
       const items = (result.Items || []) as FormattedItem<ENTITY>[];
       return items;
@@ -99,10 +124,23 @@ export default function paginate<
     returnNodesForLast: async (nodeAccessor, count, orderArgs) => {
       // For "last" parameter, we need to get the last N items from the end
       const result = await nodeAccessor
-        .options(
-          { limit: count, reverse: orderArgs.ascOrDesc === 'asc' },
-          { merge: true }
-        )
+        .options((previousOptions) => {
+          if ('limit' in previousOptions) {
+            throw new Error('limit already set - cannot apply last');
+          }
+
+          if ('reverse' in previousOptions) {
+            throw new Error(
+              'reverse already set - cannot apply last, use orderDirection'
+            );
+          }
+
+          return {
+            ...previousOptions,
+            limit: count,
+            reverse: orderArgs.ascOrDesc === 'asc',
+          };
+        })
         .query(queryInput)
         .send();
 
