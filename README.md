@@ -8,12 +8,13 @@ This library was originally forked from [Pocket/apollo-cursor-pagination](https:
 
 - ✅ **Relay Connection Spec Compliant**: Implements the complete [Relay Connection specification](https://relay.dev/graphql/connections.htm)
 - ✅ **TypeScript Support**: Full TypeScript support with comprehensive type definitions
-- ✅ **Multiple ORM Support**: Currently supports Knex.js and DynamoDB Toolbox with extensible architecture for other ORMs
+- ✅ **Multiple Data Source Support**: Currently supports Knex.js, DynamoDB Toolbox, and JavaScript arrays with extensible architecture for other data sources
 - ✅ **Primary Key Support**: Enhanced cursor generation with primary key support
 - ✅ **Secondary Index Support**: Full support for DynamoDB GSIs and LSIs with custom cursor generation
 - ✅ **Flexible Ordering**: Support for single and multiple column ordering
 - ✅ **Custom Edge Modification**: Ability to add custom metadata to edges
 - ✅ **Column Name Formatting**: Support for custom column name transformations
+- ✅ **Array Pagination**: Built-in support for paginating JavaScript arrays with cursor-based pagination
 
 ## Installation
 
@@ -115,6 +116,35 @@ const usersResolver = async (_, args) => {
     usersByCategory, // Access pattern
     { first, last, before, after, orderDirection }
   );
+
+  return result;
+};
+```
+
+### Basic Usage with Arrays
+
+```typescript
+import { arrayPaginator } from 'apollo-cursor-pagination-ts';
+
+// Your GraphQL resolver
+const usersResolver = async (_, args) => {
+  const { first, last, before, after, orderBy, orderDirection } = args;
+
+  // Your array of users (could be from cache, memory, or pre-fetched data)
+  const users = [
+    { id: '1', name: 'Alice', email: 'alice@example.com' },
+    { id: '2', name: 'Bob', email: 'bob@example.com' },
+    // ... more users
+  ];
+
+  const result = await arrayPaginator(users, {
+    first,
+    last,
+    before,
+    after,
+    orderBy,
+    orderDirection,
+  });
 
   return result;
 };
@@ -566,6 +596,182 @@ const result = await dynamodbPaginator(
   }
 );
 ```
+
+## Using the Array Connector
+
+The `arrayPaginator` function provides cursor-based pagination for JavaScript arrays. This is useful when you have data in memory that you want to paginate, or when working with data that has already been fetched from a database.
+
+```typescript
+import { arrayPaginator } from 'apollo-cursor-pagination-ts';
+
+const result = await arrayPaginator(
+  array, // JavaScript array of objects
+  paginationArgs, // GraphQL pagination arguments
+  options // Optional configuration
+);
+```
+
+### Basic Usage
+
+```typescript
+const users = [
+  {
+    id: '1',
+    name: 'Alice',
+    email: 'alice@example.com',
+    createdAt: '2023-01-01',
+  },
+  { id: '2', name: 'Bob', email: 'bob@example.com', createdAt: '2023-01-02' },
+  {
+    id: '3',
+    name: 'Charlie',
+    email: 'charlie@example.com',
+    createdAt: '2023-01-03',
+  },
+  // ... more users
+];
+
+// Forward pagination
+const result = await arrayPaginator(users, {
+  first: 10,
+  orderBy: 'name',
+  orderDirection: 'asc',
+});
+
+// Backward pagination
+const result = await arrayPaginator(users, {
+  last: 10,
+  orderBy: 'createdAt',
+  orderDirection: 'desc',
+});
+
+// Cursor-based pagination
+const result = await arrayPaginator(users, {
+  first: 5,
+  after: 'some-cursor',
+  orderBy: 'email',
+  orderDirection: 'asc',
+});
+```
+
+### Multiple Column Ordering
+
+The array paginator supports ordering by multiple columns, just like the Knex.js connector:
+
+```typescript
+const result = await arrayPaginator(users, {
+  first: 10,
+  orderBy: ['name', 'email'],
+  orderDirection: ['asc', 'desc'], // name ascending, email descending
+});
+```
+
+### Custom Primary Key
+
+By default, the array paginator uses `'id'` as the primary key. You can specify a custom primary key:
+
+```typescript
+const result = await arrayPaginator(
+  users,
+  {
+    first: 10,
+    orderBy: 'name',
+  },
+  {
+    primaryKey: 'email', // Use email as the primary key
+  }
+);
+```
+
+### Skip Total Count
+
+For performance optimization with large arrays, you can skip the total count calculation:
+
+```typescript
+const result = await arrayPaginator(
+  users,
+  {
+    first: 10,
+    orderBy: 'name',
+  },
+  {
+    skipTotalCount: true,
+  }
+);
+```
+
+### Array Paginator Parameters
+
+1. **`array`**: A JavaScript array of objects to paginate
+2. **`paginationArgs`**: GraphQL pagination arguments:
+   - `first`: Number of items to fetch (forward pagination)
+   - `last`: Number of items to fetch (backward pagination)
+   - `before`: Cursor for backward pagination
+   - `after`: Cursor for forward pagination
+   - `orderBy`: Column(s) to order by (string or array of strings)
+   - `orderDirection`: 'asc' or 'desc' (or array for multiple columns)
+3. **`options`**: Optional configuration object:
+   - `primaryKey`: Custom primary key (defaults to 'id')
+   - `skipTotalCount`: Skip total count calculation for performance
+
+### Return Value
+
+The array paginator returns the same `ConnectionResult` object as other connectors:
+
+```typescript
+interface ConnectionResult<T> {
+  pageInfo: {
+    hasPreviousPage: boolean;
+    hasNextPage: boolean;
+    startCursor?: string;
+    endCursor?: string;
+  };
+  totalCount?: number;
+  edges: Array<{
+    cursor: string;
+    node: T;
+  }>;
+}
+```
+
+### Use Cases
+
+The array paginator is particularly useful for:
+
+- **In-memory data**: When you have data already loaded in memory
+- **Caching scenarios**: When working with cached data that needs pagination
+- **Testing**: For testing pagination logic with mock data
+- **Simple applications**: When you don't need database-level pagination
+- **Data transformation**: When you need to paginate data after processing or filtering
+
+### Example: GraphQL Resolver
+
+```typescript
+const usersResolver = async (_, args) => {
+  const { first, last, before, after, orderBy, orderDirection } = args;
+
+  // Fetch all users (in a real app, you might filter this first)
+  const allUsers = await fetchAllUsers();
+
+  // Apply pagination
+  const result = await arrayPaginator(allUsers, {
+    first,
+    last,
+    before,
+    after,
+    orderBy,
+    orderDirection,
+  });
+
+  return result;
+};
+```
+
+### Performance Considerations
+
+- **Large arrays**: For very large arrays, consider using database-level pagination instead
+- **Memory usage**: The array paginator loads all data into memory, so be mindful of memory usage
+- **Sorting**: Multi-column sorting is performed in memory and may be slower than database sorting for large datasets
 
 ## Creating Custom Connectors
 

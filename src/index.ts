@@ -5,3 +5,4 @@ export {
   convertNodesToEdges as dynamodbConvertNodesToEdges,
 } from './orm-connectors/dynamodb-toolbox';
 export { default as apolloConnectionBuilder } from './builder';
+export { default as arrayPaginator } from './array';
