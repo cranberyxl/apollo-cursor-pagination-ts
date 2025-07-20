@@ -57,8 +57,13 @@ export default function paginate<
   queryInput: InputValue<SCHEMA>,
   accessPattern: EntityAccessPattern<ENTITY, SCHEMA>,
   args?: Omit<GraphQLParams, 'orderBy'>,
-  builderOptions?: BuilderOptions<undefined, FormattedItem<ENTITY>>
+  builderOptions?: BuilderOptions<undefined, FormattedItem<ENTITY>> & {
+    maxPages?: number;
+  }
 ) {
+  // Capture builderOptions in closure for access by operator functions
+  const maxPages = builderOptions?.maxPages ?? 5;
+
   return apolloCursorPaginationBuilder<
     FormattedItem<ENTITY>,
     EntityAccessPattern<ENTITY, SCHEMA>,
@@ -113,13 +118,14 @@ export default function paginate<
             ...previousOptions,
             limit: count,
             reverse: orderArgs.ascOrDesc === 'desc',
+            maxPages,
           };
         })
         .query(queryInput)
         .send();
 
       const items = (result.Items || []) as FormattedItem<ENTITY>[];
-      return items;
+      return items.slice(0, count);
     },
     returnNodesForLast: async (nodeAccessor, count, orderArgs) => {
       // For "last" parameter, we need to get the last N items from the end
@@ -139,6 +145,7 @@ export default function paginate<
             ...previousOptions,
             limit: count,
             reverse: orderArgs.ascOrDesc === 'asc',
+            maxPages,
           };
         })
         .query(queryInput)
@@ -146,11 +153,14 @@ export default function paginate<
 
       const items = (result.Items || []) as FormattedItem<ENTITY>[];
 
-      return items.reverse();
+      return items.slice(0, count).reverse();
     },
     returnTotalCount: async (nodeAccessor) => {
       const result = await nodeAccessor
-        .options({ select: 'COUNT' })
+        .options((previousOptions) => ({
+          ...previousOptions,
+          select: 'COUNT',
+        }))
         .query(queryInput)
         .send();
       return result.Count || 0;

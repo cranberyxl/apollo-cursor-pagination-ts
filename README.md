@@ -15,6 +15,8 @@ This library was originally forked from [Pocket/apollo-cursor-pagination](https:
 - ✅ **Custom Edge Modification**: Ability to add custom metadata to edges
 - ✅ **Column Name Formatting**: Support for custom column name transformations
 - ✅ **Array Pagination**: Built-in support for paginating JavaScript arrays with cursor-based pagination
+- ✅ **Performance Controls**: Built-in `maxPages` configuration to prevent runaway queries and manage resource consumption
+- ✅ **Advanced Filtering**: Comprehensive support for DynamoDB Toolbox filters with performance optimization
 
 ## Installation
 
@@ -902,6 +904,21 @@ This library implements the complete [Relay Connection specification](https://re
 - `hasPreviousPage`: Boolean indicating if previous edges exist
 - `startCursor`: Cursor of the first edge
 - `endCursor`: Cursor of the last edge
+
+## Documentation
+
+### Core Concepts
+
+- **[MaxPages Configuration and Filter Integration](docs/maxPages-and-filters.md)** - Comprehensive guide to using `maxPages` with filters
+- **[MaxPages Quick Reference](docs/maxPages-quick-reference.md)** - Quick reference for `maxPages` configuration
+
+### Performance and Filtering
+
+The library includes advanced performance controls and filtering capabilities:
+
+- **MaxPages Configuration**: Prevent runaway queries by limiting the number of pages fetched
+- **DynamoDB Toolbox Filters**: Comprehensive filtering support with performance optimization
+- **Resource Management**: Built-in safeguards for database and network resource consumption
 
 ## Testing
 

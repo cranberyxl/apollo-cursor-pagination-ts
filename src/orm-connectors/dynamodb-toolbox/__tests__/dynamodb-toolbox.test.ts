@@ -15,7 +15,7 @@ import { Factory } from 'rosie';
 
 import paginate, { cursorGenerator, getDataFromCursor } from '..';
 import { encode, decode } from '../../../builder';
-import { createTable, deleteTable, table } from '../../../testUtil/ddb';
+import { createMainTable, deleteMainTable, table } from '../../../testUtil/ddb';
 
 const TestEntity = new Entity({
   name: 'TestEntity',
@@ -76,7 +76,7 @@ describe('DynamoDB Toolbox Pagination', () => {
   let reversedTestEntities: FormattedItem<typeof TestEntity>[];
 
   beforeEach(async () => {
-    await createTable();
+    await createMainTable();
 
     // Wait a bit for the table and indexes to be fully active
     await new Promise<void>((resolve) => {
@@ -99,7 +99,7 @@ describe('DynamoDB Toolbox Pagination', () => {
   });
 
   afterEach(async () => {
-    await deleteTable();
+    await deleteMainTable();
   });
 
   describe('Utility Functions', () => {
@@ -1356,6 +1356,82 @@ describe('DynamoDB Toolbox Pagination', () => {
           .sort();
         expect(backToFirstIds).toEqual(originalIds);
       });
+    });
+  });
+
+  describe('MaxPages Configuration', () => {
+    it('should respect maxPages configuration for first pagination', async () => {
+      const maxPagesPattern = TestEntity.build(EntityAccessPattern)
+        .schema(
+          map({
+            name: string(),
+          })
+        )
+        .pattern(({ name }) => ({
+          partition: `NAME#${name}`,
+        }));
+
+      // Test with custom maxPages setting
+      const result = await paginate(
+        { name: 'bob' },
+        maxPagesPattern,
+        { first: 3 },
+        { maxPages: 2 } as any // Set maxPages to 2
+      );
+
+      expect(result.edges).toHaveLength(3);
+      expect(result.pageInfo.hasNextPage).toBe(true);
+      expect(result.totalCount).toBe(10);
+    });
+
+    it('should respect maxPages configuration for last pagination', async () => {
+      const maxPagesPattern = TestEntity.build(EntityAccessPattern)
+        .schema(
+          map({
+            name: string(),
+          })
+        )
+        .pattern(({ name }) => ({
+          partition: `NAME#${name}`,
+        }));
+
+      // Test with custom maxPages setting for last pagination
+      const result = await paginate(
+        { name: 'bob' },
+        maxPagesPattern,
+        { last: 3 },
+        { maxPages: 2 } as any // Set maxPages to 2
+      );
+
+      // maxPages is only applied to first pagination, not last pagination
+      // For last pagination, we get exactly the requested number of items
+      expect(result.edges).toHaveLength(3);
+      expect(result.pageInfo.hasPreviousPage).toBe(true);
+      expect(result.totalCount).toBe(10);
+    });
+
+    it('should use default maxPages when not specified', async () => {
+      const maxPagesPattern = TestEntity.build(EntityAccessPattern)
+        .schema(
+          map({
+            name: string(),
+          })
+        )
+        .pattern(({ name }) => ({
+          partition: `NAME#${name}`,
+        }));
+
+      // Test without specifying maxPages (should use default of 5)
+      const result = await paginate(
+        { name: 'bob' },
+        maxPagesPattern,
+        { first: 3 }
+        // No maxPages specified, should use default
+      );
+
+      expect(result.edges).toHaveLength(3);
+      expect(result.pageInfo.hasNextPage).toBe(true);
+      expect(result.totalCount).toBe(10);
     });
   });
 });

@@ -24,6 +24,8 @@ export const documentClient = DynamoDBDocumentClient.from(client);
 export const dynamoClient = client;
 
 const testTableName = 'test-table';
+const filteredTestTableName = 'filtered-test-table';
+
 // Table configuration
 const tableConfig = (TableName: string): CreateTableCommandInput => ({
   TableName,
@@ -109,18 +111,49 @@ const tableConfig = (TableName: string): CreateTableCommandInput => ({
 });
 
 // Table creation and deletion functions
-export const createTable = async () => {
-  await documentClient.send(new CreateTableCommand(tableConfig(testTableName)));
+export const createTable = async (tableName: string = testTableName) => {
+  await documentClient.send(new CreateTableCommand(tableConfig(tableName)));
 };
 
-export const deleteTable = async () => {
-  await documentClient.send(
-    new DeleteTableCommand({ TableName: testTableName })
-  );
+export const deleteTable = async (tableName: string = testTableName) => {
+  await documentClient.send(new DeleteTableCommand({ TableName: tableName }));
 };
+
+// Convenience functions for different test suites
+export const createMainTable = async () => createTable(testTableName);
+export const deleteMainTable = async () => deleteTable(testTableName);
+export const createFilteredTable = async () =>
+  createTable(filteredTestTableName);
+export const deleteFilteredTable = async () =>
+  deleteTable(filteredTestTableName);
 
 export const table = new Table({
   name: testTableName,
+  partitionKey: { name: 'pk', type: 'string' },
+  sortKey: { name: 'sk', type: 'string' },
+  documentClient,
+  indexes: {
+    inverse: {
+      type: 'global',
+      partitionKey: { name: 'sk', type: 'string' },
+      sortKey: { name: 'pk', type: 'string' },
+    },
+    gsi2: {
+      type: 'global',
+      partitionKey: { name: 'pk2', type: 'string' },
+      sortKey: { name: 'sk2', type: 'string' },
+    },
+    inverse2: {
+      type: 'global',
+      partitionKey: { name: 'sk2', type: 'string' },
+      sortKey: { name: 'pk2', type: 'string' },
+    },
+  },
+});
+
+// Create a table instance for filtered tests
+export const filteredTable = new Table({
+  name: filteredTestTableName,
   partitionKey: { name: 'pk', type: 'string' },
   sortKey: { name: 'sk', type: 'string' },
   documentClient,
