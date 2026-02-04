@@ -2829,6 +2829,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/better-sqlite3@npm:^7.6.13":
+  version: 7.6.13
+  resolution: "@types/better-sqlite3@npm:7.6.13"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/c4336e7b92343eb0e988ded007c53fa9887b98a38d61175226e86124a1a2c28b1a4e3892873c5041e350b7bfa2901f85c82db1542c4f0eed1d3a899682c92106
+  languageName: node
+  linkType: hard
+
 "@types/estree@npm:1.0.7":
   version: 1.0.7
   resolution: "@types/estree@npm:1.0.7"
@@ -3494,9 +3503,11 @@ __metadata:
     "@swc/cli": "npm:^0.7.7"
     "@swc/core": "npm:^1.12.0"
     "@swc/jest": "npm:^0.2.38"
+    "@types/better-sqlite3": "npm:^7.6.13"
     "@types/jest": "npm:^29.5.12"
     "@types/node": "npm:^16.0.0"
     "@types/rosie": "npm:^0.0.45"
+    better-sqlite3: "npm:^12.5.0"
     dynamodb-toolbox: "npm:^2.6.5"
     eslint: "npm:^9.28.0"
     eslint-config-airbnb-base: "npm:^13.1.0"
@@ -3510,6 +3521,7 @@ __metadata:
     eslint-plugin-prettier: "npm:^5.4.1"
     jest: "npm:^29.7.0"
     knex: "npm:^3.1.0"
+    kysely: "npm:^0.28.11"
     prettier: "npm:^3.5.3"
     rosie: "npm:^2.1.1"
     sqlite3: "npm:^5.1.7"
@@ -3520,6 +3532,7 @@ __metadata:
   peerDependencies:
     dynamodb-toolbox: ^2.6.5
     knex: "*"
+    kysely: ^0.28.0
   languageName: unknown
   linkType: soft
 
@@ -3674,6 +3687,17 @@ __metadata:
   version: 1.5.1
   resolution: "base64-js@npm:1.5.1"
   checksum: 10c0/f23823513b63173a001030fae4f2dabe283b99a9d324ade3ad3d148e218134676f1ee8568c877cd79ec1c53158dcf2d2ba527a97c606618928ba99dd930102bf
+  languageName: node
+  linkType: hard
+
+"better-sqlite3@npm:^12.5.0":
+  version: 12.5.0
+  resolution: "better-sqlite3@npm:12.5.0"
+  dependencies:
+    bindings: "npm:^1.5.0"
+    node-gyp: "npm:latest"
+    prebuild-install: "npm:^7.1.1"
+  checksum: 10c0/50016aaa9a9db768907da5b109f12f8bb6f6d9be34d68b5623d901fe038cdac0d81be37aa280c27c8e0604d6c2482584b14f9c40f75ad6aa0baa59278c5f7a6a
   languageName: node
   linkType: hard
 
@@ -6565,6 +6589,13 @@ __metadata:
   bin:
     knex: bin/cli.js
   checksum: 10c0/d8a1f99fad143c6057e94759b2ae700ae661a0b0b2385f643011962ef501dcc7b32cfdb5bda66ef81283ca56f13630f47691c579ce66ad0e8128e209533c3785
+  languageName: node
+  linkType: hard
+
+"kysely@npm:^0.28.11":
+  version: 0.28.11
+  resolution: "kysely@npm:0.28.11"
+  checksum: 10c0/3fa4f0617bd015a51de559f00835ac2733e9f0e4c8e2c8bcd091dea4b1a24586c3a445cd4afe02c77e248f232c8c9ba3143989eac3c5a3d233d3e241f53a9f99
   languageName: node
   linkType: hard
 
