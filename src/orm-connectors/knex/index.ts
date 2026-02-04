@@ -457,5 +457,6 @@ export default function paginate<
         primaryKey: string;
       }
     ) => Knex.QueryBuilder<TResult, TRecord>,
+    defaultPrimaryKey: 'id',
   })(query, params, opts);
 }
