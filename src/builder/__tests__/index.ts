@@ -19,6 +19,7 @@ describe('apolloCursorPaginationBuilder', () => {
   ];
 
   const mockOperatorFunctions: OperatorFunctions<Node, Node[], string> = {
+    defaultPrimaryKey: 'id',
     applyAfterCursor: (nodes: Node[], cursor: string) => {
       const cursorId = parseInt(cursor.split(':')[1], 10);
       return nodes.filter((node) => node.id > cursorId);
