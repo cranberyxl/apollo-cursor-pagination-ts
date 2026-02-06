@@ -7,7 +7,7 @@ import {
   beforeEach,
   afterEach,
 } from '@jest/globals';
-import { Kysely, SqliteDialect } from 'kysely';
+import { Kysely, ReferenceExpression, SqliteDialect } from 'kysely';
 import { Factory } from 'rosie';
 import { faker } from '@faker-js/faker';
 import Database from 'better-sqlite3';
@@ -31,8 +31,15 @@ interface TestNode {
   age: number;
 }
 
+interface OtherTableNode {
+  id: number;
+  test_table_id: number;
+  label: string;
+}
+
 interface TestDatabase {
   test_table: TestNode;
+  other_table: OtherTableNode;
 }
 
 type BetterSqliteInstance = InstanceType<typeof Database>;
@@ -153,9 +160,16 @@ describe('Kysely Custom Pagination with SQLite', () => {
       .addColumn('name', 'text')
       .addColumn('age', 'integer')
       .execute();
+    await db.schema
+      .createTable('other_table')
+      .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
+      .addColumn('test_table_id', 'integer', (col) => col.notNull())
+      .addColumn('label', 'text', (col) => col.notNull())
+      .execute();
   });
 
   afterEach(async () => {
+    await db.schema.dropTable('other_table').execute();
     await db.schema.dropTable('test_table').execute();
   });
 
@@ -1030,6 +1044,159 @@ describe('Kysely Custom Pagination with SQLite', () => {
           })),
         });
       });
+    });
+  });
+
+  describe('paginate with joins', () => {
+    const joinedQuery = () =>
+      db
+        .selectFrom('test_table')
+        .innerJoin('other_table', 'test_table.id', 'other_table.test_table_id')
+        .select([
+          'test_table.id',
+          'test_table.name',
+          'test_table.age',
+          'other_table.id as other_id',
+          'other_table.test_table_id',
+          'other_table.label',
+        ]);
+
+    const joinedPaginateOpts = {
+      formatColumnFn: (
+        col: ReferenceExpression<TestDatabase, 'test_table' | 'other_table'>
+      ) =>
+        `test_table.${String(col)}` as ReferenceExpression<
+          TestDatabase,
+          'test_table' | 'other_table'
+        >,
+    };
+
+    it('paginates joined result forward with first and after', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 10 },
+        { id: 2, name: 'b', age: 20 },
+        { id: 3, name: 'c', age: 30 },
+      ];
+      await db.insertInto('test_table').values(nodes).execute();
+      await db
+        .insertInto('other_table')
+        .values([
+          { id: 1, test_table_id: 1, label: 'x' },
+          { id: 2, test_table_id: 2, label: 'y' },
+          { id: 3, test_table_id: 3, label: 'z' },
+        ])
+        .execute();
+
+      const firstPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+
+      expect(firstPage.totalCount).toBe(3);
+      expect(firstPage.edges).toHaveLength(2);
+      expect(firstPage.edges[0].node.id).toBe(1);
+      expect(firstPage.edges[0].node.label).toBe('x');
+      expect(firstPage.edges[1].node.id).toBe(2);
+      expect(firstPage.edges[1].node.label).toBe('y');
+      expect(firstPage.pageInfo.hasNextPage).toBe(true);
+
+      const secondPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          after: firstPage.pageInfo.endCursor,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(secondPage.edges).toHaveLength(1);
+      expect(secondPage.edges[0].node.id).toBe(3);
+      expect(secondPage.edges[0].node.label).toBe('z');
+      expect(secondPage.pageInfo.hasNextPage).toBe(false);
+    });
+
+    it('paginates joined result with orderBy joined column', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 30 },
+        { id: 2, name: 'b', age: 10 },
+        { id: 3, name: 'c', age: 20 },
+      ];
+      await db.insertInto('test_table').values(nodes).execute();
+      await db
+        .insertInto('other_table')
+        .values([
+          { id: 1, test_table_id: 1, label: 'x' },
+          { id: 2, test_table_id: 2, label: 'y' },
+          { id: 3, test_table_id: 3, label: 'z' },
+        ])
+        .execute();
+
+      const result = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          orderBy: 'age',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(result.totalCount).toBe(3);
+      expect(result.edges[0].node.age).toBe(10);
+      expect(result.edges[0].node.label).toBe('y');
+      expect(result.edges[1].node.age).toBe(20);
+      expect(result.edges[1].node.label).toBe('z');
+    });
+
+    it('paginates joined result backwards with last and before', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 10 },
+        { id: 2, name: 'b', age: 20 },
+        { id: 3, name: 'c', age: 30 },
+      ];
+      await db.insertInto('test_table').values(nodes).execute();
+      await db
+        .insertInto('other_table')
+        .values([
+          { id: 1, test_table_id: 1, label: 'x' },
+          { id: 2, test_table_id: 2, label: 'y' },
+          { id: 3, test_table_id: 3, label: 'z' },
+        ])
+        .execute();
+
+      const lastPage = await paginate(
+        joinedQuery(),
+        {
+          last: 2,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(lastPage.totalCount).toBe(3);
+      expect(lastPage.edges).toHaveLength(2);
+      expect(lastPage.edges[0].node.id).toBe(2);
+      expect(lastPage.edges[1].node.id).toBe(3);
+      expect(lastPage.pageInfo.hasPreviousPage).toBe(true);
+
+      const prevPage = await paginate(
+        joinedQuery(),
+        {
+          last: 2,
+          before: lastPage.pageInfo.startCursor,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      // Connection order [1, 2, 3]; before cursor of 2 we have only row 1
+      expect(prevPage.edges).toHaveLength(1);
+      expect(prevPage.edges[0].node.id).toBe(1);
     });
   });
 });
