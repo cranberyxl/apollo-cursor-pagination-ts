@@ -916,14 +916,11 @@ describe('Kysely Custom Pagination with SQLite', () => {
           ascOrDesc: 'asc',
         });
 
-        const result = await paginate(
-          db.selectFrom('test_table').selectAll(),
-          {
-            last: 2,
-            orderBy: 'name',
-            orderDirection: 'asc',
-          }
-        );
+        const result = await paginate(db.selectFrom('test_table').selectAll(), {
+          last: 2,
+          orderBy: 'name',
+          orderDirection: 'asc',
+        });
 
         expect(result).toEqual({
           totalCount: 4,
