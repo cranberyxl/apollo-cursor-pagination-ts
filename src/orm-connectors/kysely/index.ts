@@ -310,7 +310,10 @@ export const applyOrderBy = <DB, TB extends keyof DB, TResult>(
     ascOrDesc,
     formatColumnFn,
     primaryKey,
-  }: OrderArgs<ReferenceExpression<DB, TB>, ReferenceExpression<DB, TB>>
+    primaryKeyDirection = 'asc',
+  }: OrderArgs<ReferenceExpression<DB, TB>, ReferenceExpression<DB, TB>> & {
+    primaryKeyDirection?: 'asc' | 'desc';
+  }
 ) => {
   const initialValue = nodesAccessor;
   const result = operateOverScalarOrArray(
@@ -336,24 +339,15 @@ export const applyOrderBy = <DB, TB extends keyof DB, TResult>(
         ascOrDesc as 'asc' | 'desc'
       );
     },
-    (prev, isArray) =>
-      isArray
-        ? prev.orderBy(
-            formatColumnIfAvailable(
-              primaryKey,
-              formatColumnFn,
-              false
-            ) as unknown as any,
-            'asc'
-          )
-        : prev.orderBy(
-            formatColumnIfAvailable(
-              primaryKey,
-              formatColumnFn,
-              false
-            ) as unknown as any,
-            'asc'
-          )
+    (prev) =>
+      prev.orderBy(
+        formatColumnIfAvailable(
+          primaryKey,
+          formatColumnFn,
+          false
+        ) as unknown as any,
+        primaryKeyDirection
+      )
   );
   return result;
 };
@@ -377,6 +371,7 @@ export const returnNodesForLast = async <DB, TB extends keyof DB, TResult>(
     ascOrDesc: invertedAscOrDesc as 'asc' | 'desc' | ('asc' | 'desc')[],
     primaryKey,
     formatColumnFn,
+    primaryKeyDirection: 'desc',
   }).limit(count);
   const result = await orderedQuery.execute();
   // The inverted query returns rows in reverse connection order. Always reverse
