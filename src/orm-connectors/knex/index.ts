@@ -213,8 +213,10 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
     ascOrDesc = 'asc',
     formatColumnFn,
     primaryKey = 'id',
+    primaryKeyDirection = 'asc',
   }: Parameters<KnexOperatorFunctions<TResult, TRecord>['applyOrderBy']>[1] & {
     primaryKey: string;
+    primaryKeyDirection?: 'asc' | 'desc';
   }
 ): ReturnType<KnexOperatorFunctions<TResult, TRecord>['applyOrderBy']> => {
   const initialValue = nodesAccessor.clone();
@@ -241,24 +243,15 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
         ascOrDesc as 'asc' | 'desc'
       );
     },
-    (prev, isArray) =>
-      isArray
-        ? prev.orderBy(
-            formatColumnIfAvailable(
-              primaryKey,
-              formatColumnFn,
-              false
-            ) as unknown as any,
-            'asc'
-          )
-        : prev.orderBy(
-            formatColumnIfAvailable(
-              primaryKey,
-              formatColumnFn,
-              false
-            ) as unknown as any,
-            'asc'
-          )
+    (prev) =>
+      prev.orderBy(
+        formatColumnIfAvailable(
+          primaryKey,
+          formatColumnFn,
+          false
+        ) as unknown as any,
+        primaryKeyDirection
+      )
   );
   return result;
 };
@@ -292,7 +285,7 @@ export const applyBeforeCursor = buildRemoveNodesFromBeforeOrAfter('after');
 // It must remove nodes from the result set starting from the beginning until it's of size `length`.
 // e.g. let [A, B, C, D] be the `resultSet`
 // removeNodesFromBeginning(resultSet, 3) should return [B, C, D]
-export const returnNodesForLast = <
+export const returnNodesForLast = async <
   TResult extends {},
   TRecord extends {} = TResult,
 >(
@@ -306,6 +299,7 @@ export const returnNodesForLast = <
     orderColumn,
     ascOrDesc,
     primaryKey,
+    formatColumnFn,
   }: Parameters<
     KnexOperatorFunctions<TResult, TRecord>['returnNodesForLast']
   >[2]
@@ -324,17 +318,14 @@ export const returnNodesForLast = <
       ? invertedOrderArray[0]
       : invertedOrderArray;
 
-  const subquery = applyOrderBy(nodesAccessor.clone().clearOrder(), {
+  const result = await applyOrderBy(nodesAccessor.clone().clearOrder(), {
     orderColumn,
     ascOrDesc: order as 'asc' | 'desc',
     primaryKey,
+    formatColumnFn,
+    primaryKeyDirection: 'desc',
   }).limit(last);
-  const result = nodesAccessor
-    .clone()
-    .from(subquery.as('last_subquery'))
-    .clearSelect()
-    .clearWhere();
-  return result;
+  return (result as TResult[]).reverse();
 };
 
 export const returnTotalCount = async <
