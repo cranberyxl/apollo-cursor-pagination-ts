@@ -116,9 +116,15 @@ describe('Knex Custom Pagination with SQLite', () => {
       table.string('name');
       table.integer('age');
     });
+    await db.schema.createTable('other_table', (table) => {
+      table.increments('id').primary();
+      table.integer('test_table_id').notNullable();
+      table.string('label').notNullable();
+    });
   });
 
   afterEach(async () => {
+    await db.schema.dropTable('other_table');
     await db.schema.dropTable('test_table');
   });
 
@@ -224,6 +230,37 @@ describe('Knex Custom Pagination with SQLite', () => {
 
       expect(result).toEqual(nodes.slice(0, 5));
     });
+
+    it('multi-column with null in last order column (after cursor)', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, age: 10, name: 'a' },
+        { id: 2, age: 10, name: null },
+        { id: 3, age: 10, name: 'b' },
+        { id: 4, age: 20, name: 'c' },
+      ];
+      await db('test_table').insert(nodes);
+      const edges = convertNodesToEdges(nodes, undefined, {
+        orderColumn: ['age', 'name'],
+        primaryKey: 'id',
+        ascOrDesc: ['asc', 'asc'],
+      });
+      const cursorOfNullName = edges.find((e) => e.node.name === null)!.cursor;
+      const result = await applyAfterCursor(
+        db('test_table'),
+        cursorOfNullName,
+        {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['asc', 'asc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        }
+      );
+      expect(result).toHaveLength(3);
+      expect(new Set(result.map((r: TestNode) => r.id))).toEqual(
+        new Set([1, 3, 4])
+      );
+    });
   });
 
   describe('applyBeforeCursor', () => {
@@ -275,6 +312,33 @@ describe('Knex Custom Pagination with SQLite', () => {
 
       expect(result).toEqual(nodes.slice(6));
     });
+
+    it('multi-column with null in last order column (before cursor)', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, age: 10, name: 'a' },
+        { id: 2, age: 10, name: null },
+        { id: 3, age: 10, name: 'b' },
+        { id: 4, age: 20, name: 'c' },
+      ];
+      await db('test_table').insert(nodes);
+      const edges = convertNodesToEdges(nodes, undefined, {
+        orderColumn: ['age', 'name'],
+        primaryKey: 'id',
+        ascOrDesc: ['asc', 'asc'],
+      });
+      const cursorOfNameB = edges.find((e) => e.node.name === 'b')!.cursor;
+      const result = await applyBeforeCursor(db('test_table'), cursorOfNameB, {
+        orderColumn: ['age', 'name'],
+        primaryKey: 'id',
+        ascOrDesc: ['asc', 'asc'],
+        isAggregateFn: undefined,
+        formatColumnFn: undefined,
+      });
+      // Before cursor of (3, 10, 'b'): rows with (age < 10), or (age=10 and name < 'b'),
+      // or (name='b' and id < 3). SQL NULL < 'b' is NULL (falsy), so id=2 is excluded.
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(1);
+    });
   });
 
   it('returnNodesForFirst', async () => {
@@ -294,7 +358,7 @@ describe('Knex Custom Pagination with SQLite', () => {
         ascOrDesc: 'asc',
       });
 
-      expect(result).toEqual(nodes.slice(0, 3));
+      expect(result).toEqual([nodes[2], nodes[1], nodes[0]]);
     });
     it('id desc', async () => {
       const nodes = factory.buildList(10).sort((a, b) => a.id - b.id);
@@ -305,7 +369,7 @@ describe('Knex Custom Pagination with SQLite', () => {
         ascOrDesc: 'desc',
       });
 
-      expect(result).toEqual(nodes.slice(0, 3));
+      expect(result).toEqual([nodes[2], nodes[1], nodes[0]]);
     });
   });
 
@@ -744,6 +808,41 @@ describe('Knex Custom Pagination with SQLite', () => {
           edges: edges.slice(7, 9),
         });
       });
+
+      it('returns correct last N when rows tie on sort column and differ only by primaryKey', async () => {
+        // Exercises the primaryKey tiebreaker direction in returnNodesForLast.
+        // All rows share the same name, so ordering is entirely by primaryKey.
+        await db('test_table').del();
+        const tiedNodes: TestNode[] = [
+          { id: 1, name: 'same', age: 10 },
+          { id: 2, name: 'same', age: 20 },
+          { id: 3, name: 'same', age: 30 },
+          { id: 4, name: 'same', age: 40 },
+        ];
+        await db('test_table').insert(tiedNodes);
+        const tiedEdges = convertNodesToEdges(tiedNodes, undefined, {
+          orderColumn: 'name',
+          primaryKey: 'id',
+          ascOrDesc: 'asc',
+        });
+
+        const result = await paginate(db('test_table'), {
+          last: 2,
+          orderBy: 'name',
+          orderDirection: 'asc',
+        });
+
+        expect(result).toEqual({
+          totalCount: 4,
+          pageInfo: {
+            hasNextPage: false,
+            hasPreviousPage: true,
+            startCursor: tiedEdges[2].cursor,
+            endCursor: tiedEdges[3].cursor,
+          },
+          edges: tiedEdges.slice(2, 4),
+        });
+      });
     });
 
     describe('totalCount', () => {
@@ -911,6 +1010,191 @@ describe('Knex Custom Pagination with SQLite', () => {
           })),
         });
       });
+    });
+  });
+
+  describe('paginate with joins', () => {
+    const joinedQuery = () =>
+      db('test_table')
+        .join('other_table', 'test_table.id', 'other_table.test_table_id')
+        .select(
+          'test_table.id',
+          'test_table.name',
+          'test_table.age',
+          'other_table.id as other_id',
+          'other_table.test_table_id',
+          'other_table.label'
+        );
+
+    const joinedPaginateOpts = {
+      formatColumnFn: (col: string) => `test_table.${col}`,
+    };
+
+    it('paginates joined result forward with first and after', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 10 },
+        { id: 2, name: 'b', age: 20 },
+        { id: 3, name: 'c', age: 30 },
+      ];
+      await db('test_table').insert(nodes);
+      await db('other_table').insert([
+        { id: 1, test_table_id: 1, label: 'x' },
+        { id: 2, test_table_id: 2, label: 'y' },
+        { id: 3, test_table_id: 3, label: 'z' },
+      ]);
+
+      const firstPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+
+      expect(firstPage.totalCount).toBe(3);
+      expect(firstPage.edges).toHaveLength(2);
+      expect(firstPage.edges[0].node.id).toBe(1);
+      expect(firstPage.edges[0].node.label).toBe('x');
+      expect(firstPage.edges[1].node.id).toBe(2);
+      expect(firstPage.edges[1].node.label).toBe('y');
+      expect(firstPage.pageInfo.hasNextPage).toBe(true);
+
+      const secondPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          after: firstPage.pageInfo.endCursor,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(secondPage.edges).toHaveLength(1);
+      expect(secondPage.edges[0].node.id).toBe(3);
+      expect(secondPage.edges[0].node.label).toBe('z');
+      expect(secondPage.pageInfo.hasNextPage).toBe(false);
+    });
+
+    it('paginates joined result with orderBy on primary table column', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 30 },
+        { id: 2, name: 'b', age: 10 },
+        { id: 3, name: 'c', age: 20 },
+      ];
+      await db('test_table').insert(nodes);
+      await db('other_table').insert([
+        { id: 1, test_table_id: 1, label: 'x' },
+        { id: 2, test_table_id: 2, label: 'y' },
+        { id: 3, test_table_id: 3, label: 'z' },
+      ]);
+
+      const result = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          orderBy: 'age',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(result.totalCount).toBe(3);
+      expect(result.edges[0].node.age).toBe(10);
+      expect(result.edges[0].node.label).toBe('y');
+      expect(result.edges[1].node.age).toBe(20);
+      expect(result.edges[1].node.label).toBe('z');
+    });
+
+    it('paginates joined result backwards with last and before', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 10 },
+        { id: 2, name: 'b', age: 20 },
+        { id: 3, name: 'c', age: 30 },
+      ];
+      await db('test_table').insert(nodes);
+      await db('other_table').insert([
+        { id: 1, test_table_id: 1, label: 'x' },
+        { id: 2, test_table_id: 2, label: 'y' },
+        { id: 3, test_table_id: 3, label: 'z' },
+      ]);
+
+      const lastPage = await paginate(
+        joinedQuery(),
+        {
+          last: 2,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(lastPage.totalCount).toBe(3);
+      expect(lastPage.edges).toHaveLength(2);
+      expect(lastPage.edges[0].node.id).toBe(2);
+      expect(lastPage.edges[1].node.id).toBe(3);
+      expect(lastPage.pageInfo.hasPreviousPage).toBe(true);
+
+      const prevPage = await paginate(
+        joinedQuery(),
+        {
+          last: 2,
+          before: lastPage.pageInfo.startCursor,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(prevPage.edges).toHaveLength(1);
+      expect(prevPage.edges[0].node.id).toBe(1);
+    });
+
+    it('paginates one-to-many join without duplicating or skipping rows', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 10 },
+        { id: 2, name: 'b', age: 20 },
+        { id: 3, name: 'c', age: 30 },
+      ];
+      await db('test_table').insert(nodes);
+      await db('other_table').insert([
+        { id: 1, test_table_id: 1, label: 'x1' },
+        { id: 2, test_table_id: 1, label: 'x2' },
+        { id: 3, test_table_id: 2, label: 'y' },
+        { id: 4, test_table_id: 3, label: 'z' },
+      ]);
+
+      const firstPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+
+      // Row fan-out: id=1 appears twice due to two other_table rows
+      expect(firstPage.totalCount).toBe(4);
+      expect(firstPage.edges).toHaveLength(2);
+      expect(firstPage.edges[0].node.id).toBe(1);
+      expect(firstPage.edges[0].node.label).toBe('x1');
+      expect(firstPage.edges[1].node.id).toBe(1);
+      expect(firstPage.edges[1].node.label).toBe('x2');
+      expect(firstPage.pageInfo.hasNextPage).toBe(true);
+
+      const secondPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          after: firstPage.pageInfo.endCursor,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(secondPage.edges).toHaveLength(2);
+      expect(secondPage.edges[0].node.id).toBe(2);
+      expect(secondPage.edges[1].node.id).toBe(3);
+      expect(secondPage.pageInfo.hasNextPage).toBe(false);
     });
   });
 });
