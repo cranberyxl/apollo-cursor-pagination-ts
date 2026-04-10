@@ -7,7 +7,7 @@ import {
   beforeEach,
   afterEach,
 } from '@jest/globals';
-import { Kysely, ReferenceExpression, SqliteDialect } from 'kysely';
+import { Kysely, ReferenceExpression, SqliteDialect, sql } from 'kysely';
 import { Factory } from 'rosie';
 import { faker } from '@faker-js/faker';
 import Database from 'better-sqlite3';
@@ -347,7 +347,7 @@ describe('Kysely Custom Pagination with SQLite', () => {
       ).execute();
       // Connection order (age asc, name asc): null first, then 'a', 'b', then age 20. So after (2, 10, null) we want (1, 10, 'a'), (3, 10, 'b'), (4, 20, 'c').
       expect(result).toHaveLength(3);
-      expect(result.map((r) => r.id).sort()).toEqual([1, 3, 4]);
+      expect(new Set(result.map((r) => r.id))).toEqual(new Set([1, 3, 4]));
     });
   });
 
@@ -408,6 +408,41 @@ describe('Kysely Custom Pagination with SQLite', () => {
       ).execute();
 
       expect(result).toEqual(nodes.slice(6));
+    });
+
+    it('multi-column with null in last order column (before cursor)', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, age: 10, name: 'a' },
+        { id: 2, age: 10, name: null },
+        { id: 3, age: 10, name: 'b' },
+        { id: 4, age: 20, name: 'c' },
+      ];
+      await db.insertInto('test_table').values(nodes).execute();
+      const edges = convertNodesToEdges<TestDatabase, 'test_table', TestNode>(
+        nodes,
+        undefined,
+        {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['asc', 'asc'],
+        }
+      );
+      const cursorOfNameB = edges.find((e) => e.node.name === 'b')!.cursor;
+      const result = await applyBeforeCursor(
+        db.selectFrom('test_table').selectAll(),
+        cursorOfNameB,
+        {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['asc', 'asc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        }
+      ).execute();
+      // Before cursor of (3, 10, 'b'): rows with (age < 10), or (age=10 and name < 'b'),
+      // or (name='b' and id < 3). SQL NULL < 'b' is NULL (falsy), so id=2 is excluded.
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(1);
     });
   });
 
@@ -861,6 +896,108 @@ describe('Kysely Custom Pagination with SQLite', () => {
           edges: edges.slice(7, 9),
         });
       });
+
+      it('returns correct last N when rows tie on sort column and differ only by primaryKey', async () => {
+        await db.deleteFrom('test_table').execute();
+        const tiedNodes: TestNode[] = [
+          { id: 1, name: 'same', age: 10 },
+          { id: 2, name: 'same', age: 20 },
+          { id: 3, name: 'same', age: 30 },
+          { id: 4, name: 'same', age: 40 },
+        ];
+        await db.insertInto('test_table').values(tiedNodes).execute();
+        const tiedEdges = convertNodesToEdges<
+          TestDatabase,
+          'test_table',
+          TestNode
+        >(tiedNodes, undefined, {
+          orderColumn: 'name',
+          primaryKey: 'id',
+          ascOrDesc: 'asc',
+        });
+
+        const result = await paginate(
+          db.selectFrom('test_table').selectAll(),
+          {
+            last: 2,
+            orderBy: 'name',
+            orderDirection: 'asc',
+          }
+        );
+
+        expect(result).toEqual({
+          totalCount: 4,
+          pageInfo: {
+            hasNextPage: false,
+            hasPreviousPage: true,
+            startCursor: tiedEdges[2].cursor,
+            endCursor: tiedEdges[3].cursor,
+          },
+          edges: tiedEdges.slice(2, 4),
+        });
+      });
+
+      it('can sort by aggregate value', async () => {
+        const result = await paginate(
+          db
+            .selectFrom('test_table')
+            .select(({ fn }) => [
+              fn.sum<number>('id').as('idsum'),
+              'test_table.id',
+              'test_table.name',
+              'test_table.age',
+            ])
+            .groupBy('test_table.id'),
+          {
+            first: 3,
+            orderBy: 'idsum' as any,
+            orderDirection: 'asc',
+          },
+          {
+            isAggregateFn: (column: any) => column === 'idsum',
+            formatColumnFn: (column: any) =>
+              column === 'idsum' ? sql`sum(id)` : column,
+          }
+        );
+
+        expect(result.edges).toHaveLength(3);
+        expect(result.pageInfo.hasNextPage).toBe(true);
+        expect(result.pageInfo.hasPreviousPage).toBe(false);
+        expect(result.totalCount).toBe(10);
+
+        // Verify ordering: sum(id) for each row equals the id itself (group of 1)
+        expect(result.edges[0].node.id).toBe(nodes[0].id);
+        expect(result.edges[1].node.id).toBe(nodes[1].id);
+        expect(result.edges[2].node.id).toBe(nodes[2].id);
+
+        const result2 = await paginate(
+          db
+            .selectFrom('test_table')
+            .select(({ fn }) => [
+              fn.sum<number>('id').as('idsum'),
+              'test_table.id',
+              'test_table.name',
+              'test_table.age',
+            ])
+            .groupBy('test_table.id'),
+          {
+            first: 1,
+            after: result.pageInfo.endCursor,
+            orderBy: 'idsum' as any,
+            orderDirection: 'asc',
+          },
+          {
+            isAggregateFn: (column: any) => column === 'idsum',
+            formatColumnFn: (column: any) =>
+              column === 'idsum' ? sql`sum(id)` : column,
+          }
+        );
+
+        expect(result2.edges).toHaveLength(1);
+        expect(result2.edges[0].node.id).toBe(nodes[3].id);
+        expect(result2.pageInfo.hasNextPage).toBe(true);
+        expect(result2.pageInfo.hasPreviousPage).toBe(true);
+      });
     });
 
     describe('totalCount', () => {
@@ -1197,6 +1334,58 @@ describe('Kysely Custom Pagination with SQLite', () => {
       // Connection order [1, 2, 3]; before cursor of 2 we have only row 1
       expect(prevPage.edges).toHaveLength(1);
       expect(prevPage.edges[0].node.id).toBe(1);
+    });
+
+    it('paginates one-to-many join without duplicating or skipping rows', async () => {
+      const nodes: TestNode[] = [
+        { id: 1, name: 'a', age: 10 },
+        { id: 2, name: 'b', age: 20 },
+        { id: 3, name: 'c', age: 30 },
+      ];
+      await db.insertInto('test_table').values(nodes).execute();
+      await db
+        .insertInto('other_table')
+        .values([
+          { id: 1, test_table_id: 1, label: 'x1' },
+          { id: 2, test_table_id: 1, label: 'x2' },
+          { id: 3, test_table_id: 2, label: 'y' },
+          { id: 4, test_table_id: 3, label: 'z' },
+        ])
+        .execute();
+
+      const firstPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+
+      // Row fan-out: id=1 appears twice due to two other_table rows
+      expect(firstPage.totalCount).toBe(4);
+      expect(firstPage.edges).toHaveLength(2);
+      expect(firstPage.edges[0].node.id).toBe(1);
+      expect(firstPage.edges[0].node.label).toBe('x1');
+      expect(firstPage.edges[1].node.id).toBe(1);
+      expect(firstPage.edges[1].node.label).toBe('x2');
+      expect(firstPage.pageInfo.hasNextPage).toBe(true);
+
+      const secondPage = await paginate(
+        joinedQuery(),
+        {
+          first: 2,
+          after: firstPage.pageInfo.endCursor,
+          orderBy: 'id',
+          orderDirection: 'asc',
+        },
+        joinedPaginateOpts
+      );
+      expect(secondPage.edges).toHaveLength(2);
+      expect(secondPage.edges[0].node.id).toBe(2);
+      expect(secondPage.edges[1].node.id).toBe(3);
+      expect(secondPage.pageInfo.hasNextPage).toBe(false);
     });
   });
 });
