@@ -1,7 +1,14 @@
-import { ReferenceExpression, SelectQueryBuilder, sql } from 'kysely';
+import {
+  Expression,
+  OrderByExpression,
+  ReferenceExpression,
+  SelectQueryBuilder,
+  SqlBool,
+} from 'kysely';
 import apolloCursorPaginationBuilder, {
   decode,
   encode,
+  GraphQLParams,
   OrderArgs,
 } from '../../builder';
 
@@ -19,9 +26,14 @@ export const getDataFromCursor = (cursor: string): [string, any[]] => {
   if (data[0] === undefined || data[1] === undefined) {
     throw new Error(`Could not find edge with cursor ${cursor}`);
   }
-  const values = data[1]
-    .split(ARRAY_DATA_SEPARATION_TOKEN)
-    .map((v) => JSON.parse(v));
+  let values;
+  try {
+    values = data[1]
+      .split(ARRAY_DATA_SEPARATION_TOKEN)
+      .map((v) => JSON.parse(v));
+  } catch {
+    throw new Error('Invalid cursor: could not parse column value');
+  }
   return [data[0], values];
 };
 
@@ -84,12 +96,7 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
     }: OrderArgs<ReferenceExpression<DB, TB>, ReferenceExpression<DB, TB>>
   ): SelectQueryBuilder<DB, TB, TResult> => {
     const data = getDataFromCursor(cursorOfInitialNode);
-    const [idRaw, columnValue] = data;
-    // Coerce to number for integer PKs so SQLite compares numerically not lexicographically
-    const id =
-      idRaw !== '' && idRaw !== undefined && !Number.isNaN(Number(idRaw))
-        ? Number(idRaw)
-        : idRaw;
+    const [id, columnValue] = data;
 
     const isArray = Array.isArray(orderColumn);
     if (
@@ -97,6 +104,15 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
       (!Array.isArray(ascOrDesc) && isArray)
     ) {
       throw new Error('orderColumn must be an array if ascOrDesc is an array');
+    }
+    if (
+      Array.isArray(orderColumn) &&
+      Array.isArray(ascOrDesc) &&
+      orderColumn.length !== ascOrDesc.length
+    ) {
+      throw new Error(
+        'orderBy and orderDirection arrays must have the same length'
+      );
     }
 
     // Multi-column: Knex uses (cond0) OR (cond1) OR ... OR (compound). Build conditions and apply where(or([...])).
@@ -109,7 +125,7 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
           ? 'having'
           : 'where';
       return nodesAccessor[operation](({ eb, and, or }) => {
-        const conditions: ReturnType<typeof eb>[] = [];
+        const conditions: Expression<SqlBool>[] = [];
 
         for (let index = 0; index < orderCols.length; index += 1) {
           const orderBy = orderCols[index];
@@ -133,23 +149,24 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
                 )
               );
             } else {
-              conditions.push(
-                and([
+              const branchParts = [];
+              for (let k = 0; k < index; k += 1) {
+                branchParts.push(
                   eb(
-                    formatColumnIfAvailable(
-                      orderCols[index - 1],
-                      formatColumnFn
-                    ),
+                    formatColumnIfAvailable(orderCols[k], formatColumnFn),
                     '=',
-                    values[index - 1]
-                  ),
-                  eb(
-                    formatColumnIfAvailable(orderBy, formatColumnFn),
-                    comparator,
-                    currValue
-                  ),
-                ])
+                    values[k]
+                  )
+                );
+              }
+              branchParts.push(
+                eb(
+                  formatColumnIfAvailable(orderBy, formatColumnFn),
+                  comparator,
+                  currValue
+                )
               );
+              conditions.push(and(branchParts));
             }
           }
         }
@@ -180,20 +197,31 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
             ])
           );
         } else {
-          conditions.push(
-            and([
+          const compoundParts = [];
+          for (let k = 0; k < orderCols.length - 1; k += 1) {
+            compoundParts.push(
               eb(
-                formatColumnIfAvailable(lastOrderColumn, formatColumnFn),
+                formatColumnIfAvailable(orderCols[k], formatColumnFn),
                 '=',
-                lastValue
-              ),
-              eb(
-                formatColumnIfAvailable(primaryKey, formatColumnFn),
-                lastComparator,
-                id
-              ),
-            ])
+                values[k]
+              )
+            );
+          }
+          compoundParts.push(
+            eb(
+              formatColumnIfAvailable(lastOrderColumn, formatColumnFn),
+              '=',
+              lastValue
+            )
           );
+          compoundParts.push(
+            eb(
+              formatColumnIfAvailable(primaryKey, formatColumnFn),
+              lastComparator,
+              id
+            )
+          );
+          conditions.push(and(compoundParts));
         }
 
         return or(conditions);
@@ -226,7 +254,7 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
                 eb(
                   formatColumnIfAvailable(orderBy, formatColumnFn),
                   'is not',
-                  sql`null`
+                  null
                 ),
               ])
             );
@@ -262,6 +290,10 @@ function buildRemoveNodesFromBeforeOrAfter<DB, TB extends keyof DB, TResult>(
   };
 }
 
+// applyAfterCursor passes 'before' to the builder: the builder's `beforeOrAfter`
+// flag controls which comparator to use, and the 'before' direction yields the
+// '>' (or '<' on desc) operator that excludes the cursor node — i.e., keeps rows
+// AFTER it in the current sort order. Confusing name; consider renaming later.
 export const applyAfterCursor: <DB, TB extends keyof DB, TResult>(
   nodesAccessor: SelectQueryBuilder<DB, TB, TResult>,
   cursorOfInitialNode: string,
@@ -269,6 +301,7 @@ export const applyAfterCursor: <DB, TB extends keyof DB, TResult>(
 ) => SelectQueryBuilder<DB, TB, TResult> =
   buildRemoveNodesFromBeforeOrAfter('before');
 
+// applyBeforeCursor passes 'after': inverted in the same way; see comment above.
 export const applyBeforeCursor: <DB, TB extends keyof DB, TResult>(
   nodesAccessor: SelectQueryBuilder<DB, TB, TResult>,
   cursorOfInitialNode: string,
@@ -315,6 +348,22 @@ export const applyOrderBy = <DB, TB extends keyof DB, TResult>(
     primaryKeyDirection?: 'asc' | 'desc';
   }
 ) => {
+  const isArray = Array.isArray(orderColumn);
+  if (
+    (Array.isArray(ascOrDesc) && !isArray) ||
+    (!Array.isArray(ascOrDesc) && isArray)
+  ) {
+    throw new Error('orderColumn must be an array if ascOrDesc is an array');
+  }
+  if (
+    Array.isArray(orderColumn) &&
+    Array.isArray(ascOrDesc) &&
+    orderColumn.length !== ascOrDesc.length
+  ) {
+    throw new Error(
+      'orderBy and orderDirection arrays must have the same length'
+    );
+  }
   const initialValue = nodesAccessor;
   const result = operateOverScalarOrArray(
     initialValue,
@@ -326,7 +375,7 @@ export const applyOrderBy = <DB, TB extends keyof DB, TResult>(
             orderBy,
             formatColumnFn,
             false
-          ) as unknown as any,
+          ) as OrderByExpression<DB, TB, TResult>,
           ascOrDesc[index]
         );
       }
@@ -335,7 +384,7 @@ export const applyOrderBy = <DB, TB extends keyof DB, TResult>(
           orderBy,
           formatColumnFn,
           false
-        ) as unknown as any,
+        ) as OrderByExpression<DB, TB, TResult>,
         ascOrDesc as 'asc' | 'desc'
       );
     },
@@ -345,7 +394,7 @@ export const applyOrderBy = <DB, TB extends keyof DB, TResult>(
           primaryKey,
           formatColumnFn,
           false
-        ) as unknown as any,
+        ) as OrderByExpression<DB, TB, TResult>,
         primaryKeyDirection
       )
   );
@@ -381,7 +430,7 @@ export const returnNodesForLast = async <DB, TB extends keyof DB, TResult>(
 
 export const convertNodesToEdges = <DB, TB extends keyof DB, TResult>(
   nodes: TResult[],
-  _: any,
+  _: GraphQLParams<ReferenceExpression<DB, TB>> | undefined,
   {
     orderColumn,
     primaryKey,
@@ -443,6 +492,9 @@ export default function paginate<DB, TB extends keyof DB, TResult>(
     ReferenceExpression<DB, TB>,
     ReferenceExpression<DB, TB>
   >({
+    // 'before'/'after' here refer to the builder's comparator selection,
+    // not the cursor side. See comments on the standalone applyAfterCursor /
+    // applyBeforeCursor exports above for details.
     applyAfterCursor: buildRemoveNodesFromBeforeOrAfter<DB, TB, TResult>(
       'before'
     ),
@@ -454,6 +506,6 @@ export default function paginate<DB, TB extends keyof DB, TResult>(
     returnNodesForLast,
     convertNodesToEdges,
     applyOrderBy,
-    defaultPrimaryKey: 'id' as any,
+    defaultPrimaryKey: 'id' as ReferenceExpression<DB, TB>,
   })(query, params, opts);
 }

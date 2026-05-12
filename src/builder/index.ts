@@ -7,13 +7,13 @@ export interface OrderArgs<C, OC = string> {
   orderColumn: OC | OC[];
   ascOrDesc: OrderDirection | OrderDirection[];
   isAggregateFn?: (column: OC) => boolean;
-  formatColumnFn?: (column: OC) => C;
+  formatColumnFn?: (column: OC, isRaw?: boolean) => C;
   primaryKey: OC;
 }
 
 export interface ExternalOrderArgs<C, OC = string> {
   isAggregateFn?: (column: OC) => boolean;
-  formatColumnFn?: (column: OC) => C;
+  formatColumnFn?: (column: OC, isRaw?: boolean) => C;
   primaryKey?: OC;
 }
 
@@ -63,7 +63,7 @@ export interface OperatorFunctions<N, NA, C, OC = string> {
     params: GraphQLParams<OC> | undefined,
     opts: OrderArgs<C, OC>
   ) => { cursor: string; node: N }[];
-  defaultPrimaryKey: OC;
+  defaultPrimaryKey?: OC;
 }
 export interface BuilderOptions<C, N, OC = string>
   extends Partial<ExternalOrderArgs<C, OC>> {
@@ -151,12 +151,15 @@ const nodesToReturn = async <N, NA, C, OC = string>(
   let nodes: N[] = [];
 
   // Check if both first and last are provided
-  if (first && last) {
+  if (first != null && last != null) {
     throw new Error('Cannot specify both `first` and `last` arguments');
   }
 
-  if (first) {
-    if (first < 0) throw new Error('`first` argument must not be less than 0');
+  if ((first != null && first < 0) || (last != null && last < 0)) {
+    throw new Error('`first`/`last` arguments must be non-negative');
+  }
+
+  if (first != null) {
     nodes = await operatorFunctions.returnNodesForFirst(
       nodesAccessor,
       first + 1,
@@ -166,8 +169,7 @@ const nodesToReturn = async <N, NA, C, OC = string>(
       hasNextPage = true;
       nodes = nodes.slice(0, first);
     }
-  } else if (last) {
-    if (last < 0) throw new Error('`last` argument must not be less than 0');
+  } else if (last != null) {
     nodes = await operatorFunctions.returnNodesForLast(
       nodesAccessor,
       last + 1,
@@ -207,7 +209,7 @@ const apolloCursorPaginationBuilder =
       formatColumnFn,
       skipTotalCount = false,
       modifyEdgeFn,
-      primaryKey = defaultPrimaryKey,
+      primaryKey = defaultPrimaryKey || ('id' as OC),
     } = opts;
     const {
       before,
@@ -217,6 +219,10 @@ const apolloCursorPaginationBuilder =
       orderDirection = 'asc',
       orderBy = primaryKey,
     } = args;
+
+    if (Array.isArray(orderBy) && orderBy.length === 0) {
+      throw new Error('orderBy array must not be empty');
+    }
 
     const orderColumn = orderBy;
     const ascOrDesc = orderDirection;

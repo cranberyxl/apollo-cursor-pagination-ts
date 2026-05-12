@@ -81,5 +81,16 @@
     "dynamodb-toolbox": "^2.6.5",
     "knex": "*",
     "kysely": "^0.28.0"
+  },
+  "peerDependenciesMeta": {
+    "dynamodb-toolbox": {
+      "optional": true
+    },
+    "knex": {
+      "optional": true
+    },
+    "kysely": {
+      "optional": true
+    }
   }
 }

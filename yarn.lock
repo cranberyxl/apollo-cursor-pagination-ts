@@ -2,7 +2,7 @@
 # Manual changes might be lost - proceed with caution!
 
 __metadata:
-  version: 8
+  version: 9
   cacheKey: 10c0
 
 "@ampproject/remapping@npm:^2.2.0":
@@ -3533,6 +3533,13 @@ __metadata:
     dynamodb-toolbox: ^2.6.5
     knex: "*"
     kysely: ^0.28.0
+  peerDependenciesMeta:
+    dynamodb-toolbox:
+      optional: true
+    knex:
+      optional: true
+    kysely:
+      optional: true
   languageName: unknown
   linkType: soft
 

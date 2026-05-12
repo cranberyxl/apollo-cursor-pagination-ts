@@ -218,13 +218,27 @@ describe('Array Paginator', () => {
 
   it('should throw error when first is negative', async () => {
     await expect(paginateArray(users, { first: -1 })).rejects.toThrow(
-      '`first` argument must not be less than 0'
+      '`first`/`last` arguments must be non-negative'
     );
   });
 
   it('should throw error when last is negative', async () => {
     await expect(paginateArray(users, { last: -1 })).rejects.toThrow(
-      '`last` argument must not be less than 0'
+      '`first`/`last` arguments must be non-negative'
     );
+  });
+
+  it('should throw error when orderBy is an empty array', async () => {
+    await expect(
+      paginateArray(users, { first: 3, orderBy: [] as any })
+    ).rejects.toThrow('orderBy array must not be empty');
+  });
+
+  it('should return empty edges when first is 0', async () => {
+    const result = await paginateArray(users, { first: 0 });
+    expect(result.edges).toEqual([]);
+    expect(result.pageInfo.hasNextPage).toBe(true);
+    expect(result.pageInfo.hasPreviousPage).toBe(false);
+    expect(result.totalCount).toBe(users.length);
   });
 });

@@ -54,9 +54,14 @@ export const getDataFromCursor = (cursor: string): [string, any[]] => {
   if (data[0] === undefined || data[1] === undefined) {
     throw new Error(`Could not find edge with cursor ${cursor}`);
   }
-  const values = data[1]
-    .split(ARRAY_DATA_SEPARATION_TOKEN)
-    .map((v) => JSON.parse(v));
+  let values;
+  try {
+    values = data[1]
+      .split(ARRAY_DATA_SEPARATION_TOKEN)
+      .map((v) => JSON.parse(v));
+  } catch {
+    throw new Error('Invalid cursor: could not parse column value');
+  }
   return [data[0], values];
 };
 
@@ -106,6 +111,22 @@ function buildRemoveNodesFromBeforeOrAfter<
       primaryKey,
     }: OrderArgs<KnexOrderByColumn<TResult>>
   ): Knex.QueryBuilder<TResult, TRecord> => {
+    const orderColumnIsArray = Array.isArray(orderColumn);
+    if (
+      (Array.isArray(ascOrDesc) && !orderColumnIsArray) ||
+      (!Array.isArray(ascOrDesc) && orderColumnIsArray)
+    ) {
+      throw new Error('orderColumn must be an array if ascOrDesc is an array');
+    }
+    if (
+      Array.isArray(orderColumn) &&
+      Array.isArray(ascOrDesc) &&
+      orderColumn.length !== ascOrDesc.length
+    ) {
+      throw new Error(
+        'orderBy and orderDirection arrays must have the same length'
+      );
+    }
     const data = getDataFromCursor(cursorOfInitialNode);
     const [id, columnValue] = data;
 
@@ -219,6 +240,22 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
     primaryKeyDirection?: 'asc' | 'desc';
   }
 ): ReturnType<KnexOperatorFunctions<TResult, TRecord>['applyOrderBy']> => {
+  const isArray = Array.isArray(orderColumn);
+  if (
+    (Array.isArray(ascOrDesc) && !isArray) ||
+    (!Array.isArray(ascOrDesc) && isArray)
+  ) {
+    throw new Error('orderColumn must be an array if ascOrDesc is an array');
+  }
+  if (
+    Array.isArray(orderColumn) &&
+    Array.isArray(ascOrDesc) &&
+    orderColumn.length !== ascOrDesc.length
+  ) {
+    throw new Error(
+      'orderBy and orderDirection arrays must have the same length'
+    );
+  }
   const initialValue = nodesAccessor.clone();
   const result = operateOverScalarOrArray(
     initialValue,
@@ -260,6 +297,9 @@ export const applyOrderBy = <TResult extends {}, TRecord extends {} = TResult>(
 // It must slice the result set from the element after the one with the given cursor until the end.
 // e.g. let [A, B, C, D] be the `resultSet`
 // applyAfterCursor(resultSet, 'B') should return [C, D]
+// NOTE: 'before' here refers to the builder's comparator-selection flag — passing
+// 'before' yields the '>' comparator that excludes the cursor row, which is what
+// `after` semantics need. Confusing name; consider renaming the flag later.
 export const applyAfterCursor = buildRemoveNodesFromBeforeOrAfter('before');
 
 export const returnNodesForFirst = <
@@ -279,6 +319,8 @@ export const returnNodesForFirst = <
 // It must remove all nodes after and including the one with cursor `cursorOfInitialNode`
 // e.g. let [A, B, C, D] be the `resultSet`
 // applyBeforeCursor(resultSet, 'C') should return [A, B]
+// NOTE: 'after' here refers to the builder's comparator-selection flag — inverted
+// in the same way as applyAfterCursor above.
 export const applyBeforeCursor = buildRemoveNodesFromBeforeOrAfter('after');
 
 // Used when `last` is included in the query

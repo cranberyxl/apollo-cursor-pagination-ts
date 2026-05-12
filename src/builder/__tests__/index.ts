@@ -103,7 +103,7 @@ describe('apolloCursorPaginationBuilder', () => {
       first: -1,
     };
     await expect(paginationBuilder(mockNodes, params)).rejects.toThrow(
-      '`first` argument must not be less than 0'
+      '`first`/`last` arguments must be non-negative'
     );
   });
 
@@ -112,7 +112,7 @@ describe('apolloCursorPaginationBuilder', () => {
       last: -1,
     };
     await expect(paginationBuilder(mockNodes, params)).rejects.toThrow(
-      '`last` argument must not be less than 0'
+      '`first`/`last` arguments must be non-negative'
     );
   });
 

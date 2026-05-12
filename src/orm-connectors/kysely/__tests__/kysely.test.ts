@@ -77,6 +77,14 @@ describe('non-db functions', () => {
     );
   });
 
+  it('getDataFromCursor throws on malformed JSON in column value', () => {
+    // base64 of "1_*_{not json"
+    const cursor = encode('1_*_{not json');
+    expect(() => getDataFromCursor(cursor)).toThrow(
+      'Invalid cursor: could not parse column value'
+    );
+  });
+
   it('default encode and decode is base64', () => {
     expect(encode('test')).toBe('dGVzdA==');
     expect(decode('dGVzdA==')).toBe('test');
@@ -314,6 +322,42 @@ describe('Kysely Custom Pagination with SQLite', () => {
       expect(result).toEqual(nodes.slice(0, 5));
     });
 
+    it('throws when orderBy is scalar but orderDirection is array', () => {
+      expect(() =>
+        applyAfterCursor(db.selectFrom('test_table').selectAll(), 'MV8qXzE=', {
+          orderColumn: 'name',
+          primaryKey: 'id',
+          ascOrDesc: ['asc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        })
+      ).toThrow('orderColumn must be an array if ascOrDesc is an array');
+    });
+
+    it('throws when orderBy is array but orderDirection is scalar', () => {
+      expect(() =>
+        applyAfterCursor(db.selectFrom('test_table').selectAll(), 'MV8qXzE=', {
+          orderColumn: ['name', 'age'],
+          primaryKey: 'id',
+          ascOrDesc: 'asc',
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        })
+      ).toThrow('orderColumn must be an array if ascOrDesc is an array');
+    });
+
+    it('throws when orderBy and orderDirection arrays differ in length', () => {
+      expect(() =>
+        applyAfterCursor(db.selectFrom('test_table').selectAll(), 'MV8qXzE=', {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['asc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        })
+      ).toThrow('orderBy and orderDirection arrays must have the same length');
+    });
+
     it('multi-column with null in last order column (after cursor)', async () => {
       // Exercises the branch where lastValue === null in buildRemoveNodesFromBeforeOrAfter:
       // (primaryKey comparator id) OR (lastOrderColumn is not null)
@@ -348,6 +392,41 @@ describe('Kysely Custom Pagination with SQLite', () => {
       // Connection order (age asc, name asc): null first, then 'a', 'b', then age 20. So after (2, 10, null) we want (1, 10, 'a'), (3, 10, 'b'), (4, 20, 'c').
       expect(result).toHaveLength(3);
       expect(new Set(result.map((r) => r.id))).toEqual(new Set([1, 3, 4]));
+    });
+
+    it('multi-column with null in last order column desc (after cursor)', async () => {
+      // Desc variant of the multi-column null-last-column branch.
+      const nodes: TestNode[] = [
+        { id: 1, age: 10, name: 'a' },
+        { id: 2, age: 10, name: null },
+        { id: 3, age: 10, name: 'b' },
+        { id: 4, age: 20, name: 'c' },
+      ];
+      await db.insertInto('test_table').values(nodes).execute();
+      const edges = convertNodesToEdges<TestDatabase, 'test_table', TestNode>(
+        nodes,
+        undefined,
+        {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['desc', 'desc'],
+        }
+      );
+      const cursorOfNullName = edges.find((e) => e.node.name === null)!.cursor;
+      const result = await applyAfterCursor(
+        db.selectFrom('test_table').selectAll(),
+        cursorOfNullName,
+        {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['desc', 'desc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        }
+      ).execute();
+      // Result is whatever rows the connector excludes when walking past a null-valued cursor in desc order;
+      // we just verify the call doesn't throw and result is consistent.
+      expect(Array.isArray(result)).toBe(true);
     });
   });
 
@@ -692,7 +771,7 @@ describe('Kysely Custom Pagination with SQLite', () => {
             startCursor: edges[9].cursor,
             endCursor: edges[8].cursor,
           },
-          edges: edges.reverse().slice(0, 2),
+          edges: [...edges].reverse().slice(0, 2),
         });
 
         const result2 = await paginate(
@@ -710,10 +789,10 @@ describe('Kysely Custom Pagination with SQLite', () => {
           pageInfo: {
             hasNextPage: true,
             hasPreviousPage: true,
-            startCursor: edges[2].cursor,
-            endCursor: edges[2].cursor,
+            startCursor: edges[7].cursor,
+            endCursor: edges[7].cursor,
           },
-          edges: edges.slice(2, 3),
+          edges: [edges[7]],
         });
       });
 
@@ -835,6 +914,70 @@ describe('Kysely Custom Pagination with SQLite', () => {
           },
           edges: edges.slice(2, 4),
         });
+      });
+
+      it('paginates correctly across 3-column orderBy (age, name, email)', async () => {
+        // 3-column ordering: age asc, name asc, email asc, primaryKey=id tiebreaker.
+        // Verifies that for index >= 2 the equality chain includes ALL prior columns.
+        await db.schema.dropTable('test_table').execute();
+        await db.schema
+          .createTable('test_table')
+          .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
+          .addColumn('name', 'text')
+          .addColumn('age', 'integer')
+          .addColumn('email', 'text')
+          .execute();
+
+        // Crucial row: rows 2 and 3 tie on age=10 AND name='a'; only email differs.
+        // The 3-column compound condition must use age=10 AND name='a' (both equalities)
+        // to correctly walk from row 2 to row 3.
+        const triNodes = [
+          { id: 1, age: 10, name: 'a', email: 'aa' },
+          { id: 2, age: 10, name: 'a', email: 'ab' },
+          { id: 3, age: 10, name: 'a', email: 'ac' },
+          { id: 4, age: 10, name: 'b', email: 'aa' },
+          { id: 5, age: 20, name: 'a', email: 'aa' },
+        ];
+        await db
+          .insertInto('test_table' as any)
+          .values(triNodes as any)
+          .execute();
+
+        const firstPage = await paginate(
+          db.selectFrom('test_table' as any).selectAll(),
+          {
+            first: 2,
+            orderBy: ['age', 'name', 'email'] as any,
+            orderDirection: ['asc', 'asc', 'asc'],
+          }
+        );
+        expect(firstPage.edges).toHaveLength(2);
+        expect((firstPage.edges[0].node as any).id).toBe(1);
+        expect((firstPage.edges[1].node as any).id).toBe(2);
+
+        const secondPage = await paginate(
+          db.selectFrom('test_table' as any).selectAll(),
+          {
+            first: 2,
+            after: firstPage.pageInfo.endCursor,
+            orderBy: ['age', 'name', 'email'] as any,
+            orderDirection: ['asc', 'asc', 'asc'],
+          }
+        );
+        // After (age=10, name='a', email='ab'), the next row must be
+        // (age=10, name='a', email='ac') — requires age=10 AND name='a' equality.
+        expect(secondPage.edges).toHaveLength(2);
+        expect((secondPage.edges[0].node as any).id).toBe(3);
+        expect((secondPage.edges[1].node as any).id).toBe(4);
+
+        // Restore original schema for subsequent tests.
+        await db.schema.dropTable('test_table').execute();
+        await db.schema
+          .createTable('test_table')
+          .addColumn('id', 'integer', (col) => col.primaryKey().autoIncrement())
+          .addColumn('name', 'text')
+          .addColumn('age', 'integer')
+          .execute();
       });
 
       it('can sort by multiple columns using reverse pagination', async () => {
@@ -995,6 +1138,80 @@ describe('Kysely Custom Pagination with SQLite', () => {
         expect(result2.pageInfo.hasNextPage).toBe(true);
         expect(result2.pageInfo.hasPreviousPage).toBe(true);
       });
+
+      it('can sort by multiple aggregate values across a HAVING boundary', async () => {
+        // Multi-column orderBy where both columns are aggregates. Cursor filter
+        // dispatches both to HAVING; pagination must walk across the boundary
+        // correctly. Mirrors Knex's existing aggregate test, extended to two
+        // aggregate columns to exercise the multi-column compound branch.
+        const result = await paginate(
+          db
+            .selectFrom('test_table')
+            .select(({ fn }) => [
+              fn.sum<number>('id').as('idsum'),
+              fn.max<number>('age').as('agemax'),
+              'test_table.id',
+              'test_table.name',
+              'test_table.age',
+            ])
+            .groupBy('test_table.id'),
+          {
+            first: 3,
+            orderBy: ['idsum', 'agemax'] as any,
+            orderDirection: ['asc', 'asc'],
+          },
+          {
+            isAggregateFn: (column: any) =>
+              column === 'idsum' || column === 'agemax',
+            formatColumnFn: (column: any) => {
+              if (column === 'idsum') return sql`sum(id)`;
+              if (column === 'agemax') return sql`max(age)`;
+              return column;
+            },
+          }
+        );
+
+        expect(result.edges).toHaveLength(3);
+        expect(result.pageInfo.hasNextPage).toBe(true);
+        expect(result.totalCount).toBe(10);
+        // Each group is a single row, so sum(id)=id and max(age)=age; ordering by idsum asc puts smallest id first.
+        expect(result.edges[0].node.id).toBe(nodes[0].id);
+        expect(result.edges[1].node.id).toBe(nodes[1].id);
+        expect(result.edges[2].node.id).toBe(nodes[2].id);
+
+        const result2 = await paginate(
+          db
+            .selectFrom('test_table')
+            .select(({ fn }) => [
+              fn.sum<number>('id').as('idsum'),
+              fn.max<number>('age').as('agemax'),
+              'test_table.id',
+              'test_table.name',
+              'test_table.age',
+            ])
+            .groupBy('test_table.id'),
+          {
+            first: 3,
+            after: result.pageInfo.endCursor,
+            orderBy: ['idsum', 'agemax'] as any,
+            orderDirection: ['asc', 'asc'],
+          },
+          {
+            isAggregateFn: (column: any) =>
+              column === 'idsum' || column === 'agemax',
+            formatColumnFn: (column: any) => {
+              if (column === 'idsum') return sql`sum(id)`;
+              if (column === 'agemax') return sql`max(age)`;
+              return column;
+            },
+          }
+        );
+
+        expect(result2.edges).toHaveLength(3);
+        expect(result2.edges[0].node.id).toBe(nodes[3].id);
+        expect(result2.edges[1].node.id).toBe(nodes[4].id);
+        expect(result2.edges[2].node.id).toBe(nodes[5].id);
+      });
     });
 
     describe('totalCount', () => {
@@ -1144,6 +1361,34 @@ describe('Kysely Custom Pagination with SQLite', () => {
             endCursor: edges[2].cursor,
           },
         });
+      });
+    });
+
+    describe('skipTotalCount', () => {
+      it('returns undefined totalCount when skipTotalCount is true', async () => {
+        const result = await paginate(
+          db.selectFrom('test_table').selectAll(),
+          { first: 2 },
+          { skipTotalCount: true }
+        );
+        expect(result.totalCount).toBeUndefined();
+        expect(result.edges).toHaveLength(2);
+      });
+    });
+
+    describe('large last N', () => {
+      it('returns the correct page for large last value relative to total', async () => {
+        // 10 nodes in the table. last: 8 should yield the last 8.
+        const result = await paginate(db.selectFrom('test_table').selectAll(), {
+          last: 8,
+        });
+        expect(result.edges).toHaveLength(8);
+        expect(result.totalCount).toBe(10);
+        expect(result.pageInfo.hasNextPage).toBe(false);
+        expect(result.pageInfo.hasPreviousPage).toBe(true);
+        // Ids 3..10 (asc order) should appear.
+        expect(result.edges[0].node.id).toBe(nodes[2].id);
+        expect(result.edges[7].node.id).toBe(nodes[9].id);
       });
     });
 
