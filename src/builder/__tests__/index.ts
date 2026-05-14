@@ -19,6 +19,7 @@ describe('apolloCursorPaginationBuilder', () => {
   ];
 
   const mockOperatorFunctions: OperatorFunctions<Node, Node[], string> = {
+    defaultPrimaryKey: 'id',
     applyAfterCursor: (nodes: Node[], cursor: string) => {
       const cursorId = parseInt(cursor.split(':')[1], 10);
       return nodes.filter((node) => node.id > cursorId);
@@ -102,7 +103,7 @@ describe('apolloCursorPaginationBuilder', () => {
       first: -1,
     };
     await expect(paginationBuilder(mockNodes, params)).rejects.toThrow(
-      '`first` argument must not be less than 0'
+      '`first`/`last` arguments must be non-negative'
     );
   });
 
@@ -111,7 +112,7 @@ describe('apolloCursorPaginationBuilder', () => {
       last: -1,
     };
     await expect(paginationBuilder(mockNodes, params)).rejects.toThrow(
-      '`last` argument must not be less than 0'
+      '`first`/`last` arguments must be non-negative'
     );
   });
 

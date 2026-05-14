@@ -303,5 +303,6 @@ export default function paginateArray<T>(
     returnNodesForLast,
     convertNodesToEdges,
     applyOrderBy,
+    defaultPrimaryKey: 'id',
   })(array, params, opts);
 }

@@ -167,5 +167,6 @@ export default function paginate<
     },
     convertNodesToEdges: convertNodesToEdges(queryInput, accessPattern),
     applyOrderBy: (nodeAccessor) => nodeAccessor,
+    defaultPrimaryKey: 'id',
   })(accessPattern as any, args, builderOptions ?? {});
 }

@@ -8,7 +8,7 @@ This library was originally forked from [Pocket/apollo-cursor-pagination](https:
 
 - ✅ **Relay Connection Spec Compliant**: Implements the complete [Relay Connection specification](https://relay.dev/graphql/connections.htm)
 - ✅ **TypeScript Support**: Full TypeScript support with comprehensive type definitions
-- ✅ **Multiple Data Source Support**: Currently supports Knex.js, DynamoDB Toolbox, and JavaScript arrays with extensible architecture for other data sources
+- ✅ **Multiple Data Source Support**: Currently supports Knex.js, Kysely, DynamoDB Toolbox, and JavaScript arrays with extensible architecture for other data sources
 - ✅ **Primary Key Support**: Enhanced cursor generation with primary key support
 - ✅ **Secondary Index Support**: Full support for DynamoDB GSIs and LSIs with custom cursor generation
 - ✅ **Flexible Ordering**: Support for single and multiple column ordering
@@ -30,16 +30,19 @@ yarn add apollo-cursor-pagination-ts
 
 ## Peer Dependencies
 
-This library requires the following peer dependencies:
+This library requires the following peer dependencies based on which connector you use:
 
 - **knex**: `*` (any version) - Required for the Knex.js connector
-- **dynamodb-toolbox**: `^2.6.5` - Required for the DynamoDB connector (if using)
+- **kysely**: `^0.28.0` - Required for the Kysely connector
+- **dynamodb-toolbox**: `^2.6.5` - Required for the DynamoDB connector
 
-Make sure to install these in your project:
+Install only what you need:
 
 ```bash
 npm install knex
-# or if using DynamoDB
+# or
+npm install kysely
+# or
 npm install dynamodb-toolbox@^2.6.5
 ```
 
@@ -58,6 +61,31 @@ const catsResolver = async (_, args) => {
   const baseQuery = knex('cats');
 
   const result = await knexPaginator(baseQuery, {
+    first,
+    last,
+    before,
+    after,
+    orderBy,
+    orderDirection,
+  });
+
+  return result;
+};
+```
+
+### Basic Usage with Kysely
+
+```typescript
+import { kyselyPaginator } from 'apollo-cursor-pagination-ts';
+import { Kysely } from 'kysely';
+
+// Your GraphQL resolver
+const catsResolver = async (_, args) => {
+  const { first, last, before, after, orderBy, orderDirection } = args;
+
+  const baseQuery = db.selectFrom('cats').selectAll();
+
+  const result = await kyselyPaginator(baseQuery, {
     first,
     last,
     before,
@@ -314,6 +342,43 @@ const result = await knexPaginator(baseQuery, {
   orderBy: ['createdAt', 'id'],
   orderDirection: ['desc', 'asc'],
 });
+```
+
+### Using the Kysely Connector
+
+The `kyselyPaginator` function is the main entry point for Kysely integration:
+
+```typescript
+import { kyselyPaginator } from 'apollo-cursor-pagination-ts';
+
+const result = await kyselyPaginator(
+  baseQuery, // Kysely SelectQueryBuilder
+  paginationArgs, // GraphQL pagination arguments
+  options // Optional configuration
+);
+```
+
+#### Parameters
+
+1. **`baseQuery`**: A Kysely `SelectQueryBuilder` instance (e.g., `db.selectFrom('table').selectAll()`)
+2. **`paginationArgs`**: GraphQL pagination arguments (same as Knex.js)
+3. **`options`**: Optional configuration object (same as Knex.js: `primaryKey`, `skipTotalCount`, `formatColumnFn`, `modifyEdgeFn`, `isAggregateFn`)
+
+#### Joins with Kysely
+
+When paginating joined queries, use `formatColumnFn` to disambiguate column names:
+
+```typescript
+const result = await kyselyPaginator(
+  db
+    .selectFrom('cats')
+    .innerJoin('owners', 'cats.owner_id', 'owners.id')
+    .select(['cats.id', 'cats.name', 'owners.name as ownerName']),
+  { first: 10, orderBy: 'id', orderDirection: 'asc' },
+  {
+    formatColumnFn: (col) => `cats.${String(col)}`,
+  }
+);
 ```
 
 ### Using the DynamoDB Toolbox Connector

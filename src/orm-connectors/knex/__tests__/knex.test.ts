@@ -55,6 +55,14 @@ describe('non-db functions', () => {
     );
   });
 
+  it('getDataFromCursor throws on malformed JSON in column value', () => {
+    // base64 of "1_*_{not json"
+    const cursor = encode('1_*_{not json');
+    expect(() => getDataFromCursor(cursor)).toThrow(
+      'Invalid cursor: could not parse column value'
+    );
+  });
+
   it('default encode and decode is base64', () => {
     expect(encode('test')).toBe('dGVzdA==');
     expect(decode('dGVzdA==')).toBe('test');
@@ -229,6 +237,42 @@ describe('Knex Custom Pagination with SQLite', () => {
       });
 
       expect(result).toEqual(nodes.slice(0, 5));
+    });
+
+    it('throws when orderBy is scalar but orderDirection is array', () => {
+      expect(() =>
+        applyAfterCursor(db('test_table'), 'MV8qXzE=', {
+          orderColumn: 'name',
+          primaryKey: 'id',
+          ascOrDesc: ['asc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        })
+      ).toThrow('orderColumn must be an array if ascOrDesc is an array');
+    });
+
+    it('throws when orderBy is array but orderDirection is scalar', () => {
+      expect(() =>
+        applyAfterCursor(db('test_table'), 'MV8qXzE=', {
+          orderColumn: ['name', 'age'],
+          primaryKey: 'id',
+          ascOrDesc: 'asc',
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        })
+      ).toThrow('orderColumn must be an array if ascOrDesc is an array');
+    });
+
+    it('throws when orderBy and orderDirection arrays differ in length', () => {
+      expect(() =>
+        applyAfterCursor(db('test_table'), 'MV8qXzE=', {
+          orderColumn: ['age', 'name'],
+          primaryKey: 'id',
+          ascOrDesc: ['asc'],
+          isAggregateFn: undefined,
+          formatColumnFn: undefined,
+        })
+      ).toThrow('orderBy and orderDirection arrays must have the same length');
     });
 
     it('multi-column with null in last order column (after cursor)', async () => {

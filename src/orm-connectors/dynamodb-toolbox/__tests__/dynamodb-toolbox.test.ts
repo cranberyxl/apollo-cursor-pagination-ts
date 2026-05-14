@@ -447,7 +447,7 @@ describe('DynamoDB Toolbox Pagination', () => {
           { first: -1 },
           { primaryKey: 'name' }
         )
-      ).rejects.toThrow('`first` argument must not be less than 0');
+      ).rejects.toThrow('`first`/`last` arguments must be non-negative');
     });
 
     it('should handle negative last parameter', async () => {
@@ -458,7 +458,7 @@ describe('DynamoDB Toolbox Pagination', () => {
           { last: -1 },
           { primaryKey: 'name' }
         )
-      ).rejects.toThrow('`last` argument must not be less than 0');
+      ).rejects.toThrow('`first`/`last` arguments must be non-negative');
     });
 
     it('should handle invalid cursor', async () => {
