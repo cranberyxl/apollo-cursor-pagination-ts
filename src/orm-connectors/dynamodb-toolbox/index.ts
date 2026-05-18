@@ -1,11 +1,11 @@
-import {
-  type Entity,
-  type FormattedItem,
-  EntityParser,
+import type {
+  Entity,
+  FormattedItem,
   InputValue,
   Schema,
   PrimaryKey,
   EntityAccessPattern,
+  EntityParser as EntityParserType,
 } from 'dynamodb-toolbox';
 import apolloCursorPaginationBuilder, {
   encode,
@@ -13,6 +13,35 @@ import apolloCursorPaginationBuilder, {
   GraphQLParams,
   BuilderOptions,
 } from '../../builder';
+
+// Lazy-load `dynamodb-toolbox` so it stays a true optional peer dep: importing
+// this library's main entry never resolves the module. Consumers that never
+// call the dynamodb paginator can omit the dependency entirely.
+let cachedEntityParser: typeof EntityParserType | undefined;
+
+async function loadEntityParser(): Promise<typeof EntityParserType> {
+  if (cachedEntityParser) return cachedEntityParser;
+  let mod: typeof import('dynamodb-toolbox');
+  try {
+    mod = await import('dynamodb-toolbox');
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Cannot find module 'dynamodb-toolbox'. Install it as a peer dependency to use the dynamodb paginator. (${reason})`
+    );
+  }
+  cachedEntityParser = mod.EntityParser;
+  return cachedEntityParser;
+}
+
+function getEntityParser(): typeof EntityParserType {
+  if (!cachedEntityParser) {
+    throw new Error(
+      'dynamodb-toolbox has not been loaded yet. Use the `dynamodbPaginator` default export, which loads it on demand, before calling `convertNodesToEdges` directly.'
+    );
+  }
+  return cachedEntityParser;
+}
 
 export const cursorGenerator = <E extends Entity>(
   key: PrimaryKey<E['table']>
@@ -25,8 +54,9 @@ export const convertNodesToEdges =
     queryInput: InputValue<SCHEMA>,
     accessPattern: EntityAccessPattern<ENTITY, SCHEMA>
   ) =>
-  (nodes: N[]) =>
-    nodes.map((node) => {
+  (nodes: N[]) => {
+    const EntityParser = getEntityParser();
+    return nodes.map((node) => {
       const parsed = accessPattern.entity.build(EntityParser).parse(node);
 
       // Use the index info in the query to find all the keys
@@ -49,8 +79,9 @@ export const convertNodesToEdges =
         node,
       };
     });
+  };
 
-export default function paginate<
+export default async function paginate<
   ENTITY extends Entity = Entity,
   SCHEMA extends Schema = Schema,
 >(
@@ -61,6 +92,10 @@ export default function paginate<
     maxPages?: number;
   }
 ) {
+  // Resolve the optional peer dep before constructing the operator graph so
+  // sync `convertNodesToEdges` can read it from cache.
+  await loadEntityParser();
+
   // Capture builderOptions in closure for access by operator functions
   const maxPages = builderOptions?.maxPages ?? 5;
 
