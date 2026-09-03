@@ -42,7 +42,7 @@
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.840.0",
     "@aws-sdk/lib-dynamodb": "^3.840.0",
-    "@eslint/compat": "^1.2.9",
+    "@eslint/compat": "^2.0.0",
     "@eslint/js": "^9.28.0",
     "@faker-js/faker": "^9.8.0",
     "@jest/globals": "^29.7.0",
